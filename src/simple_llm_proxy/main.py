@@ -7,11 +7,14 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
 from starlette.requests import Request
 
-from .pipeline import create_request_context, PipelineAction, PipelineError
+from .pipeline import create_request_context, PipelineError, execute_pipeline
+from .context import PipelineAction, NCompletionParams, RequestContext
+from .error import AuthenticationError, RateLimitError, InternalError
 from .middleware import (
     logging_middleware,
     observability_middleware,
-    limit_enforcement_middleware
+    limit_enforcement_middleware,
+    retry_middleware
 )
 
 
@@ -54,7 +57,7 @@ class OpenAIMessage:
 class ChatCompletionRequest:
     """Legacy request class for backward compatibility."""
     def __init__(self, data: Dict):
-        self.model = data.get("model", "gpt-3.5-turbo")
+        self.model = data.get("model", "openai:gpt-3.5-turbo")
         self.messages = [OpenAIMessage(**msg) for msg in data.get("messages", [])]
         self.temperature = data.get("temperature", 1.0)
         self.top_p = data.get("top_p", 1.0)
@@ -91,20 +94,47 @@ async def chat_completions(request: Request):
         }
 
         # Create request context for pipeline processing
-        ctx = create_request_context(body, **client_metadata)
+        # Convert dict to NCompletionParams with correct field mapping
+        body_with_metadata = body.copy()
+        # Map OpenAI 'model' to any_llm 'model_id'
+        if 'model' in body_with_metadata:
+            body_with_metadata['model_id'] = body_with_metadata.pop('model')
+        # Add required metadata field  
+        body_with_metadata['metadata'] = body.get('metadata', {})
+        
+        completion_params = NCompletionParams(**body_with_metadata)
+        ctx = create_request_context(completion_params, **client_metadata)
 
         if ctx.is_streaming:
             # Handle streaming requests through pipeline
             async def stream_generator():
-                async for chunk in PIPELINE.execute_streaming(ctx):
-                    # Handle pipeline control actions
-                    if 'error' in chunk:
-                        # Error response - send and terminate
-                        yield f"data: {json.dumps(chunk)}\n\n"
+                async for item in execute_pipeline(ctx):
+                    # Check if this is a RequestContext (final result)
+                    if isinstance(item, RequestContext):
+                        # Check if pipeline resulted in error
+                        if item.has_error:
+                            # Send error as SSE chunk and terminate
+                            error_chunk = {
+                                "error": item.error.to_dict()["error"]
+                            }
+                            yield f"data: {json.dumps(error_chunk)}\n\n"
+                            yield "data: [DONE]\n\n"
+                            return
+                        # If no error but final context, we're done
                         yield "data: [DONE]\n\n"
                         return
-
-                    yield f"data: {json.dumps(chunk)}\n\n"
+                    
+                    # This is a ChatCompletionChunk or error chunk dict
+                    # Convert to dict if it's a ChatCompletionChunk object
+                    if hasattr(item, 'model_dump'):
+                        chunk_dict = item.model_dump()
+                    elif isinstance(item, dict):
+                        chunk_dict = item
+                    else:
+                        # Convert to JSON serializable format
+                        chunk_dict = json.loads(json.dumps(item, default=str))
+                    
+                    yield f"data: {json.dumps(chunk_dict)}\n\n"
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(
@@ -118,14 +148,25 @@ async def chat_completions(request: Request):
             )
         else:
             # Handle non-streaming requests through pipeline
-            ctx = await PIPELINE.execute(ctx)
+            async for result in execute_pipeline(ctx):
+                ctx = result
+                break  # Get the final result for non-streaming
 
-            # Check if pipeline halted with error
-            if ctx.action == PipelineAction.HALT and ctx.response:
-                if isinstance(ctx.response, PipelineError):
-                    return JSONResponse(ctx.response.to_dict(), status_code=400)
-                elif isinstance(ctx.response, dict) and 'error' in ctx.response:
-                    return JSONResponse(ctx.response, status_code=400)
+            # Check if pipeline resulted in error
+            if ctx.has_error:
+                # Return error response with appropriate status code
+                error_dict = ctx.error.to_dict()
+                status_code = 400  # Default to client error
+                
+                # Map specific error types to HTTP status codes
+                if isinstance(ctx.error, AuthenticationError):
+                    status_code = 401
+                elif isinstance(ctx.error, RateLimitError):
+                    status_code = 429
+                elif isinstance(ctx.error, InternalError):
+                    status_code = 500
+                    
+                return JSONResponse(error_dict, status_code=status_code)
 
             # Return successful response
             return JSONResponse(ctx.response or {"error": {"message": "No response generated"}})
@@ -176,6 +217,7 @@ def create_default_pipeline():
     Currently includes:
     - Basic logging middleware
     - Observability middleware
+    - Retry middleware for transient errors
     
     TODO: Make this configurable via environment variables or config files.
     TODO: Add more middleware as they are implemented.
@@ -184,6 +226,14 @@ def create_default_pipeline():
     
     # Create a basic pipeline with minimal middleware
     pipeline = Pipeline()
+    
+    # Add retry middleware first (so it can handle errors from other middleware)
+    pipeline.setup.connect(retry_middleware(
+        max_attempts=3,
+        base_delay=1.0,
+        max_delay=60.0,
+        log_retries=True
+    ))
     
     # Add logging middleware - connects to pipeline signals
     pipeline.setup.connect(logging_middleware(

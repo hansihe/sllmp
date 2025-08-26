@@ -14,7 +14,11 @@ from typing import AsyncIterator
 
 from simple_llm_proxy.util.signal import SignalExecutionResult
 
-from .error import PipelineError, MiddlewareError, StreamError
+from .error import (
+    PipelineError, MiddlewareError, StreamError, AuthenticationError, 
+    RateLimitError, ContentPolicyError, ModelNotFoundError, NetworkError, 
+    ServiceUnavailableError, InternalError
+)
 from .context import RequestContext, PipelineAction, NCompletionParams, PipelineState
 
 # class OldMiddleware(ABC):
@@ -208,8 +212,122 @@ async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletion
         ctx.next_pipeline_state = None
 
 def _handle_signal_errors(ctx: RequestContext, result: SignalExecutionResult[None]):
-    # TODO
-    pass
+    """Handle errors from signal execution."""
+    if result.exceptions:
+        # Convert signal execution errors to middleware errors
+        for error in result.exceptions:
+            middleware_error = MiddlewareError(
+                message=f"Middleware execution error: {str(error)}",
+                request_id=ctx.request_id,
+                middleware_name="unknown"  # Could be enhanced to track specific middleware
+            )
+            ctx.set_error(middleware_error)
+            ctx.next_pipeline_state = PipelineState.ERROR
+            break  # Stop on first error
+
+
+def _extract_provider_from_model(model_id: str) -> str:
+    """Extract provider name from model_id like 'openai:gpt-3.5-turbo'."""
+    if ':' in model_id:
+        return model_id.split(':', 1)[0]
+    return "unknown"
+
+
+def classify_llm_error(exception: Exception, request_id: str, provider: str = "unknown") -> PipelineError:
+    """
+    Classify an exception from any_llm into appropriate pipeline error.
+    
+    Args:
+        exception: The original exception from any_llm
+        request_id: Request ID for error tracking
+        provider: LLM provider name
+        
+    Returns:
+        Appropriate PipelineError subclass
+    """
+    error_msg = str(exception)
+    error_msg_lower = error_msg.lower()
+    
+    # Authentication errors
+    if any(term in error_msg_lower for term in ["unauthorized", "invalid api key", "authentication", "api key"]):
+        return AuthenticationError(
+            message=f"Authentication failed with {provider}: {error_msg}",
+            request_id=request_id
+        )
+    
+    # Rate limit errors  
+    if any(term in error_msg_lower for term in ["rate limit", "quota exceeded", "too many requests"]):
+        # Try to extract retry_after if available
+        retry_after = None
+        # Common patterns: "Rate limit exceeded. Try again in 60 seconds"
+        import re
+        match = re.search(r'try again in (\d+) seconds?', error_msg_lower)
+        if match:
+            retry_after = int(match.group(1))
+            
+        return RateLimitError(
+            message=f"Rate limit exceeded for {provider}: {error_msg}",
+            request_id=request_id,
+            provider=provider,
+            retry_after=retry_after
+        )
+    
+    # Content policy errors
+    if any(term in error_msg_lower for term in ["content policy", "safety", "filtered", "inappropriate"]):
+        return ContentPolicyError(
+            message=f"Content blocked by {provider}: {error_msg}",
+            request_id=request_id,
+            provider=provider
+        )
+    
+    # Model errors
+    if any(term in error_msg_lower for term in ["model not found", "invalid model", "model.*not.*available"]):
+        return ModelNotFoundError(
+            message=f"Model not available on {provider}: {error_msg}",
+            request_id=request_id,
+            provider=provider,
+            model_id="unknown"  # Could extract from context
+        )
+    
+    # Network errors
+    if any(term in error_msg_lower for term in ["connection", "timeout", "network", "dns", "unreachable"]):
+        return NetworkError(
+            message=f"Network error connecting to {provider}: {error_msg}",
+            request_id=request_id,
+            provider=provider
+        )
+    
+    # Service errors (5xx status codes)
+    if any(term in error_msg_lower for term in ["service unavailable", "internal server error", "502", "503", "504"]):
+        return ServiceUnavailableError(
+            message=f"Service unavailable from {provider}: {error_msg}",
+            request_id=request_id,
+            provider=provider
+        )
+    
+    # Default to internal error for unclassified exceptions
+    return InternalError(
+        message=f"Unhandled error from {provider}: {error_msg}",
+        request_id=request_id
+    )
+
+
+def _create_error_chunk(error: PipelineError, ctx: RequestContext) -> dict:
+    """Create an error chunk for streaming responses."""
+    import time
+    
+    return {
+        "id": f"error_{ctx.request_id}",
+        "object": "chat.completion.chunk", 
+        "created": int(time.time()),
+        "model": ctx.request.model_id,
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "finish_reason": "error"
+        }],
+        "error": error.to_dict()["error"]  # Include error details
+    }
 
 async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[ChatCompletionChunk, None]:
     await ctx.pipeline.llm_call.execute_pre(ctx)
@@ -220,7 +338,7 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
             messages=ctx.request.messages, # type: ignore
             stream=True,
             **{k: v for k, v in ctx.request.model_dump().items()
-            if k not in ['model', 'messages', 'stream']}
+            if k not in ['model_id', 'messages', 'stream']}
         )
         completion_stream = cast(AsyncIterator[ChatCompletionChunk], completion_stream)
 
@@ -229,6 +347,16 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
         # Yield chunks from the any_llm stream
         async for chunk in completion_stream:
             yield chunk
+            
+    except Exception as e:
+        # Classify and set pipeline error  
+        provider = _extract_provider_from_model(ctx.request.model_id)
+        pipeline_error = classify_llm_error(e, ctx.request_id, provider)
+        ctx.set_error(pipeline_error)
+        # Transition to error state
+        ctx.next_pipeline_state = PipelineState.ERROR
+        # For streaming, just set the error and let the pipeline handle it
+        # The final RequestContext with the error will be yielded by the main pipeline
     finally:
         await ctx.pipeline.llm_call.execute_post(ctx)
 
@@ -239,10 +367,17 @@ async def _execute_llm_call(ctx: RequestContext):
             model=ctx.request.model_id,
             messages=ctx.request.messages, # type: ignore
             **{k: v for k, v in ctx.request.model_dump().items()
-            if k not in ['model', 'messages']} # type: ignore
+            if k not in ['model_id', 'messages']} # type: ignore
         )
         completion = cast(ChatCompletion, completion)
         ctx.set_response(completion)
+    except Exception as e:
+        # Classify and set pipeline error
+        provider = _extract_provider_from_model(ctx.request.model_id)
+        pipeline_error = classify_llm_error(e, ctx.request_id, provider)
+        ctx.set_error(pipeline_error)
+        # Transition to error state
+        ctx.next_pipeline_state = PipelineState.ERROR
     finally:
         await ctx.pipeline.llm_call.execute_post(ctx)
 

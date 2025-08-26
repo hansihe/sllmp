@@ -62,3 +62,60 @@ class AuthenticationError(PipelineError):
 class InternalError(PipelineError):
     """Internal system error."""
     error_type: str = field(default="internal_error", init=False)
+
+
+@dataclass(frozen=True)
+class LLMProviderError(PipelineError):
+    """Base class for LLM provider errors."""
+    provider: str
+    provider_error_code: Optional[str] = None
+    error_type: str = field(default="llm_provider_error", init=False)
+    
+    def _extra_fields(self) -> Dict[str, Any]:
+        base = {"provider": self.provider}
+        if self.provider_error_code:
+            base["provider_error_code"] = self.provider_error_code
+        return base
+
+
+@dataclass(frozen=True)
+class RateLimitError(LLMProviderError):
+    """Rate limit exceeded by LLM provider."""
+    retry_after: Optional[int] = None  # Seconds to wait before retry
+    error_type: str = field(default="rate_limit_error", init=False)
+    
+    def _extra_fields(self) -> Dict[str, Any]:
+        base = super()._extra_fields()
+        if self.retry_after:
+            base["retry_after"] = self.retry_after
+        return base
+
+
+@dataclass(frozen=True)
+class ContentPolicyError(LLMProviderError):
+    """Content blocked by provider policy."""
+    error_type: str = field(default="content_policy_error", init=False)
+
+
+@dataclass(frozen=True)
+class ModelNotFoundError(LLMProviderError):
+    """Requested model not available."""
+    model_id: str = field(default="unknown")
+    error_type: str = field(default="model_not_found_error", init=False)
+    
+    def _extra_fields(self) -> Dict[str, Any]:
+        base = super()._extra_fields()
+        base["model_id"] = self.model_id
+        return base
+
+
+@dataclass(frozen=True)
+class NetworkError(LLMProviderError):
+    """Network connectivity error."""
+    error_type: str = field(default="network_error", init=False)
+
+
+@dataclass(frozen=True)
+class ServiceUnavailableError(LLMProviderError):
+    """LLM provider service temporarily unavailable."""
+    error_type: str = field(default="service_unavailable_error", init=False)

@@ -50,14 +50,14 @@ class TestChatCompletions:
     @pytest.fixture
     def basic_request(self):
         return {
-            "model": "gpt-3.5-turbo",
+            "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Hello"}]
         }
     
     @pytest.fixture  
     def multimodal_request(self):
         return {
-            "model": "gpt-4-vision-preview",
+            "model": "openai:gpt-4-vision-preview",
             "messages": [{
                 "role": "user",
                 "content": [
@@ -174,7 +174,7 @@ class TestErrorHandling:
         assert "error" in data
 
     async def test_missing_messages(self, client):
-        request_data = {"model": "gpt-3.5-turbo"}
+        request_data = {"model": "openai:gpt-3.5-turbo"}
         
         response = await client.post("/v1/chat/completions", json=request_data)
         # Should not crash, messages defaults to empty list
@@ -182,7 +182,7 @@ class TestErrorHandling:
 
     async def test_empty_messages(self, client):
         request_data = {
-            "model": "gpt-3.5-turbo",
+            "model": "openai:gpt-3.5-turbo",
             "messages": []
         }
         
@@ -281,7 +281,7 @@ class TestRequestParsing:
         data = {"messages": []}
         req = ChatCompletionRequest(data)
         
-        assert req.model == "gpt-3.5-turbo"
+        assert req.model == "openai:gpt-3.5-turbo"
         assert req.temperature == 1.0
         assert req.top_p == 1.0
         assert req.max_tokens is None

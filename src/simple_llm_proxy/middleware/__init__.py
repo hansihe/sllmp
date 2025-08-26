@@ -12,6 +12,7 @@ This package provides ready-to-use middleware for:
 # from .auth import AuthMiddleware, RateLimitMiddleware
 # from .guardrails import ContentGuardrailMiddleware, ResponseValidatorMiddleware
 from .logging import logging_middleware, observability_middleware
+from .retry import retry_middleware
 # from .routing import RoutingMiddleware
 from .limit import limit_enforcement_middleware, BudgetLimit, RateLimit, Constraint, InMemoryLimitBackend, RedisClusterLimitBackend, RedisLimitBackend
 
@@ -36,6 +37,9 @@ __all__ = [
     # Observability
     'logging_middleware',
     'observability_middleware',
+
+    # Error Handling
+    'retry_middleware',
 
     # Routing
     # 'RoutingMiddleware',
