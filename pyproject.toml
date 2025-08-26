@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "simple-llm-proxy"
+version = "0.1.0"
+description = "OpenAI API compatible LLM proxy server"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{ name = "Your Name", email = "your.email@example.com" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "any-llm-sdk[openai]>=0.16.0",
+    "ezpubsub>=0.3.0",
+    "langfuse>=3.3.0",
+    "pydantic>=2.0.0",
+    "redis>=5.0.0",
+    "starlette>=0.27.0",
+    "uvicorn>=0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.24.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+]
+redis = ["redis>=5.0.0"]
+
+[project.scripts]
+simple-llm-proxy = "simple_llm_proxy.main:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/simple-llm-proxy"
+Repository = "https://github.com/yourusername/simple-llm-proxy.git"
+Issues = "https://github.com/yourusername/simple-llm-proxy/issues"
+
+[tool.uv.sources]
+simple-llm-proxy = { workspace = true }
+
+[tool.uv.workspace]
+members = ["."]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/simple_llm_proxy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short"]
+asyncio_mode = "auto"
+markers = [
+    "redis: marks tests as requiring Redis (deselect with '-m \"not redis\"')",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+# UV Scripts (custom commands)
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "httpx>=0.24.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+]
