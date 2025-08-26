@@ -171,45 +171,32 @@ async def health_check(request: Request):
 # This is where you can customize the pipeline behavior
 def create_default_pipeline():
     """
-    Create the default middleware pipeline.
-
+    Create a simple default middleware pipeline for testing and basic functionality.
+    
+    Currently includes:
+    - Basic logging middleware
+    - Observability middleware
+    
     TODO: Make this configurable via environment variables or config files.
-    This configuration demonstrates the different types of middleware and
-    their ordering in the pipeline.
+    TODO: Add more middleware as they are implemented.
     """
-    return (PipelineBuilder()
-        # Phase 1: Authentication & Authorization
-        .add(AuthMiddleware(require_user_id=False))  # TODO: Set to True in production
-
-        # Phase 2: Rate Limiting & Abuse Prevention
-        .add(RateLimitMiddleware(requests_per_minute=100))
-
-        # Phase 3: Request Routing & Provider Selection
-        .add(RoutingMiddleware(
-            strategy="cost_optimized",
-            fallback_chain=["openai", "anthropic"]
-        ))
-
-        # Phase 4: Content Safety & Guardrails
-        .add(ContentGuardrailMiddleware(
-            policies=["inappropriate", "pii"],
-            check_interval=5  # Check every 5 chunks during streaming
-        ))
-
-        # Phase 5: Response Quality Validation
-        .add(ResponseValidatorMiddleware(
-            min_quality_score=0.6,
-            min_length=5
-        ))
-
-        # Phase 6: Observability & Logging
-        .add(LoggingMiddleware(log_requests=True, log_responses=True))
-        .add(ObservabilityMiddleware(emit_metrics=True, trace_middleware=False))
-
-        # Set monitoring interval (how often to check content during streaming)
-        .set_monitoring_interval(3)
-        .build()
-    )
+    from .context import Pipeline
+    
+    # Create a basic pipeline with minimal middleware
+    pipeline = Pipeline()
+    
+    # Add logging middleware - connects to pipeline signals
+    pipeline.setup.connect(logging_middleware(
+        log_requests=True, 
+        log_responses=True
+    ))
+    
+    # Add observability middleware
+    pipeline.setup.connect(observability_middleware(
+        emit_metrics=True
+    ))
+    
+    return pipeline
 
 # Initialize the pipeline
 PIPELINE = create_default_pipeline()

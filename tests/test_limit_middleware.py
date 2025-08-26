@@ -6,14 +6,16 @@ import pytest
 import time
 from unittest.mock import AsyncMock
 from simple_llm_proxy.middleware.limit import (
-    LimitEnforcementMiddleware,
+    limit_enforcement_middleware,
     BudgetLimit,
     RateLimit,
     Constraint,
     InMemoryLimitBackend,
-    SimpleLimitBackend
+    BaseLimitBackend,
+    LimitError
 )
-from simple_llm_proxy.pipeline import create_request_context, PipelineAction, LimitError
+from simple_llm_proxy.pipeline import create_request_context
+from simple_llm_proxy.context import PipelineAction
 
 
 @pytest.fixture

@@ -5,12 +5,10 @@ Test suite for individual middleware components.
 import pytest
 import time
 from unittest.mock import patch, AsyncMock
-from simple_llm_proxy.pipeline import create_request_context, PipelineAction
-from simple_llm_proxy.middleware.auth import AuthMiddleware
-from simple_llm_proxy.middleware.logging import LoggingMiddleware
-from simple_llm_proxy.middleware.routing import RoutingMiddleware
-from simple_llm_proxy.middleware.limit import RateLimitMiddleware
-from simple_llm_proxy.middleware.guardrails import ContentGuardrailMiddleware
+from simple_llm_proxy.pipeline import create_request_context
+from simple_llm_proxy.context import PipelineAction
+from simple_llm_proxy.middleware.logging import logging_middleware
+# Note: Other middleware are in experimental/ or not implemented yet
 
 
 @pytest.fixture

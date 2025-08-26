@@ -1,13 +1,13 @@
 """
 Test suite for the PipelineBuilder.
+
+TODO: Rewrite tests for new signal-based pipeline architecture
 """
 
 import pytest
-from simple_llm_proxy.builder import PipelineBuilder
-from simple_llm_proxy.pipeline import Pipeline, Middleware
-from simple_llm_proxy.middleware.auth import AuthMiddleware
-from simple_llm_proxy.middleware.logging import LoggingMiddleware
-from simple_llm_proxy.middleware.routing import RoutingMiddleware
+
+# Skipping all tests in this file for now - PipelineBuilder doesn't exist in new architecture
+pytest.skip("PipelineBuilder tests need rewrite for signal-based architecture", allow_module_level=True)
 
 
 class MockTestMiddleware(Middleware):
