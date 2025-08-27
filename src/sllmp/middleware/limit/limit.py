@@ -58,7 +58,7 @@ class Constraint(BaseModel):
     Defines a multi-dimensional budget constraint that can combine
     different dimensions like feature, user_id, organization, etc.
     """
-    name: str = Field(..., description="Human-readable constraint name")
+    name: Optional[str] = Field(None, description="Human-readable constraint name (auto-set from dict key in config)")
     dimensions: List[str] = Field(..., description="Constraint dimensions (feature, user_id, etc.)")
     budget_limit: Optional[BudgetLimit] = Field(None, description="Budget limit configuration")
     rate_limit: Optional[RateLimit] = Field(None, description="Rate limit configuration")

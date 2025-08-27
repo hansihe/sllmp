@@ -1,11 +1,13 @@
 try:
     import langfuse
+    from langfuse.api import NotFoundError
 except ImportError:
     _has_langfuse = False
+    langfuse = None
+    NotFoundError = Exception
 else:
     _has_langfuse = True
 
-from langfuse.api import NotFoundError
 from typing import Dict, Optional, cast
 
 from sllmp.error import MiddlewareError
@@ -42,7 +44,9 @@ if _has_langfuse:
 
             ctx.state['langfuse'] = {
                 'client': client,
-                'prompt_label': default_prompt_label
+                'prompt_label': default_prompt_label,
+                'used_prompt_client': None,
+                'used_prompt_variables': {}
             }
 
             # Propmpt management
@@ -80,8 +84,7 @@ if _has_langfuse:
                     "content": prompt
                 })
             else:
-                prompt.extend(ctx.request.messages)
-                ctx.request.messages = prompt
+                ctx.request.messages = prompt + ctx.request.messages
 
             langfuse_state["used_prompt_client"] = prompt_client
             langfuse_state["used_prompt_variables"] = prompt_variables
@@ -97,7 +100,7 @@ if _has_langfuse:
         generation = None
 
         def observability_pre_llm(ctx: RequestContext):
-            used_prompt_client = cast(Optional[langfuse.model.PromptClient], langfuse_state['used_prompt_client'])
+            used_prompt_client = cast(Optional[langfuse.model.PromptClient], langfuse_state.get('used_prompt_client', None))
 
             nonlocal generation
             generation = root_span.start_observation(

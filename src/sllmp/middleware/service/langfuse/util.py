@@ -26,10 +26,10 @@ if _has_langfuse:
         audio = None
 
         if kwargs.function_call is not None:
-            response.update({"function_call": kwargs.function_call})
+            response.update({"function_call": kwargs.function_call.model_dump()})
 
         if kwargs.tool_calls is not None:
-            response.update({"tool_calls": kwargs.tool_calls})
+            response.update({"tool_calls": [tool_call.model_dump() for tool_call in kwargs.tool_calls]})
 
         if kwargs.audio is not None:
             audio = kwargs.audio.__dict__

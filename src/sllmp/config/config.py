@@ -57,6 +57,9 @@ class DefaultsConfig(BaseModel):
     """Global default configuration applied to all features."""
     model: Optional[str] = Field(default=None, description="Override provider:model for this feature")
     provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
+    
+    # Advanced budget constraints
+    budget_constraints: Dict[str, Constraint] = Field(default_factory=dict, description="Multi-dimensional budget constraints by name")
 
     # Observability defaults
     langfuse: Optional[LangfuseConfig] = Field(default=None, description="Default Langfuse config")
@@ -70,6 +73,15 @@ class DefaultsConfig(BaseModel):
         """Resolve environment variables in API keys."""
         return _resolve_env_vars(kv)
 
+    @field_validator('budget_constraints')
+    @classmethod
+    def set_constraint_names(cls, constraints_dict):
+        """Set constraint names from dictionary keys."""
+        for name, constraint in constraints_dict.items():
+            # Set the name from the key
+            constraint.name = name
+        return constraints_dict
+
 
 class FeatureConfig(BaseModel):
     """Feature-specific configuration with optional overrides."""
@@ -81,7 +93,7 @@ class FeatureConfig(BaseModel):
     provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
 
     # Advanced budget constraints
-    budget_constraints: List[Constraint] = Field(default_factory=list, description="Multi-dimensional budget constraints")
+    budget_constraints: Dict[str, Constraint] = Field(default_factory=dict, description="Multi-dimensional budget constraints by name")
 
     # Observability overrides
     langfuse: Optional[LangfuseConfig] = Field(default=None, description="Feature-specific Langfuse config")
@@ -98,6 +110,15 @@ class FeatureConfig(BaseModel):
         """Resolve environment variables in API keys."""
         return _resolve_env_vars(kv)
 
+    @field_validator('budget_constraints')
+    @classmethod
+    def set_constraint_names(cls, constraints_dict):
+        """Set constraint names from dictionary keys."""
+        for name, constraint in constraints_dict.items():
+            # Set the name from the key
+            constraint.name = name
+        return constraints_dict
+
 class ResolvedFeatureConfig(BaseModel):
     """Fully resolved feature configuration with all defaults applied."""
     # Core feature metadata
@@ -110,7 +131,7 @@ class ResolvedFeatureConfig(BaseModel):
     provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
 
     # Budget and rate limiting
-    budget_constraints: List[Constraint] = Field(default_factory=list, description="Multi-dimensional budget constraints")
+    budget_constraints: Dict[str, Constraint] = Field(default_factory=dict, description="Multi-dimensional budget constraints by name")
 
     # Observability configuration
     langfuse: Optional[LangfuseConfig] = Field(default=None, description="Resolved Langfuse config")
@@ -242,10 +263,20 @@ class ConfigResolver:
         feature_dict = feature.model_dump()
         for key, value in feature_dict.items():
             if value is not None and key not in ['description', 'owner']:
-                if key == "provider_api_keys" and value:
-                    resolved_api_keys = resolved.get('provider_api_keys', {})
-                    resolved_api_keys.update(value)
-                    resolved['provider_api_keys'] = resolved_api_keys
+                if key == "provider_api_keys":
+                    # Always merge provider_api_keys, don't replace with empty dict
+                    if value:  # Only merge if feature has non-empty provider_api_keys
+                        resolved_api_keys = resolved.get('provider_api_keys', {})
+                        resolved_api_keys.update(value)
+                        resolved['provider_api_keys'] = resolved_api_keys
+                    # If value is empty dict, keep the defaults (don't override)
+                elif key == "budget_constraints":
+                    # Merge budget_constraints dicts, feature constraints override defaults by name
+                    if value:  # Only merge if feature has non-empty budget_constraints
+                        resolved_constraints = resolved.get('budget_constraints', {})
+                        resolved_constraints.update(value)
+                        resolved['budget_constraints'] = resolved_constraints
+                    # If value is empty dict, keep the defaults (don't override)
                 # if key == 'guardrails' and value:
                 #     # Merge guardrail configs (feature overrides specific fields)
                 #     resolved_guardrails = resolved.get('guardrails', {})
@@ -265,7 +296,7 @@ class ConfigResolver:
 
         return resolved
 
-    def get_limit_constraints(self, feature_name: str) -> List[Constraint]:
+    def get_limit_constraints(self, feature_name: str) -> Dict[str, Constraint]:
         """
         Get validated budget/rate limit constraints for a feature.
 
@@ -273,7 +304,7 @@ class ConfigResolver:
             feature_name: Name of the feature
 
         Returns:
-            List of validated Constraint objects
+            Dict of validated Constraint objects by name
         """
         config = self.resolve_feature_config(feature_name)
         return config.budget_constraints

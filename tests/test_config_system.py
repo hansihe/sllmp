@@ -80,20 +80,23 @@ def complex_config_data():
             'production_chat': {
                 'description': 'Production chat with limits',
                 'owner': 'prod-team',
-                'budget_constraints': [
-                    {
-                        'dimension': 'cost',
-                        'limit': 1000.0,
-                        'window_minutes': 1440,
-                        'entity': 'feature'
+                'budget_constraints': {
+                    'daily-feature-cost-limit': {
+                        'dimensions': ['feature'],
+                        'budget_limit': {
+                            'limit': 1000.0,
+                            'window': '1d'
+                        },
+                        'description': 'Daily cost limit per feature'
                     },
-                    {
-                        'dimension': 'requests',
-                        'limit': 10000,
-                        'window_minutes': 60,
-                        'entity': 'user'
+                    'hourly-user-rate-limit': {
+                        'dimensions': ['user_id'],
+                        'rate_limit': {
+                            'per_minute': 60
+                        },
+                        'description': 'Rate limit per user'
                     }
-                ],
+                },
                 'custom': {
                     'priority': 'high',
                     'alerts_enabled': True
@@ -198,6 +201,8 @@ class TestEnvironmentVariableResolution:
             resolver = ConfigResolver(temp_config_file)
             resolved = resolver.resolve_feature_config('test_feature')
             
+            # Check that environment variable was resolved and preserved
+            assert 'openai' in resolved.provider_api_keys
             assert resolved.provider_api_keys['openai'] == 'resolved-key-123'
 
     def test_env_var_resolution_missing_var(self, temp_config_file):
@@ -275,6 +280,8 @@ class TestConfigurationInheritance:
         
         # Should inherit defaults
         assert resolved.model == 'openai:gpt-3.5-turbo'
+        # provider_api_keys should be inherited from defaults
+        assert 'openai' in resolved.provider_api_keys
         assert resolved.provider_api_keys['openai'] == 'sk-test-key'
         assert resolved.langfuse.public_key == 'pk-test'
         assert resolved.langfuse.enabled is True
@@ -299,7 +306,8 @@ class TestConfigurationInheritance:
         assert resolved.langfuse.public_key == 'pk-code'
         assert resolved.langfuse.secret_key == 'sk-code'
         
-        # Should still inherit other defaults
+        # Should still inherit other defaults including api_keys
+        assert 'openai' in resolved.provider_api_keys
         assert resolved.provider_api_keys['openai'] == 'sk-test-key'
 
     def test_api_keys_merging(self, temp_config_file):
@@ -389,18 +397,19 @@ class TestBudgetConstraints:
             assert len(constraints) == 2
             
             # Check cost constraint
-            cost_constraint = constraints[0]
-            assert cost_constraint.dimension == 'cost'
-            assert cost_constraint.limit == 1000.0
-            assert cost_constraint.window_minutes == 1440
-            assert cost_constraint.entity == 'feature'
+            assert 'daily-feature-cost-limit' in constraints
+            cost_constraint = constraints['daily-feature-cost-limit']
+            assert cost_constraint.name == 'daily-feature-cost-limit'
+            assert cost_constraint.dimensions == ['feature']
+            assert cost_constraint.budget_limit.limit == 1000.0
+            assert cost_constraint.budget_limit.window == '1d'
             
-            # Check requests constraint
-            req_constraint = constraints[1]
-            assert req_constraint.dimension == 'requests'
-            assert req_constraint.limit == 10000
-            assert req_constraint.window_minutes == 60
-            assert req_constraint.entity == 'user'
+            # Check rate constraint
+            assert 'hourly-user-rate-limit' in constraints
+            rate_constraint = constraints['hourly-user-rate-limit']
+            assert rate_constraint.name == 'hourly-user-rate-limit'
+            assert rate_constraint.dimensions == ['user_id']
+            assert rate_constraint.rate_limit.per_minute == 60
 
     def test_empty_constraints(self, temp_config_file, basic_config_data):
         """Test features with no budget constraints."""
@@ -410,7 +419,75 @@ class TestBudgetConstraints:
         resolver = ConfigResolver(temp_config_file)
         constraints = resolver.get_limit_constraints('chat_completion')
         
-        assert constraints == []
+        assert constraints == {}
+
+    def test_budget_constraints_merging(self, temp_config_file):
+        """Test budget constraints are merged by name, with feature overriding defaults."""
+        config_data = {
+            'defaults': {
+                'budget_constraints': {
+                    'global-daily-limit': {
+                        'dimensions': ['feature'],
+                        'budget_limit': {
+                            'limit': 100.0,
+                            'window': '1d'
+                        },
+                        'description': 'Global daily limit'
+                    },
+                    'shared-rate-limit': {
+                        'dimensions': ['user_id'],
+                        'rate_limit': {
+                            'per_minute': 30
+                        }
+                    }
+                }
+            },
+            'features': {
+                'premium_feature': {
+                    'description': 'Premium feature with custom limits',
+                    'owner': 'premium-team',
+                    'budget_constraints': {
+                        'shared-rate-limit': {  # Override default rate limit
+                            'dimensions': ['user_id'],
+                            'rate_limit': {
+                                'per_minute': 100  # Higher limit for premium
+                            }
+                        },
+                        'premium-specific': {  # New constraint only for this feature
+                            'dimensions': ['organization'],
+                            'budget_limit': {
+                                'limit': 500.0,
+                                'window': '1d'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        with open(temp_config_file, 'w') as f:
+            yaml.dump(config_data, f)
+        
+        resolver = ConfigResolver(temp_config_file)
+        constraints = resolver.get_limit_constraints('premium_feature')
+        
+        assert len(constraints) == 3  # 2 from defaults + 1 new, with 1 overridden
+        
+        # Should inherit global-daily-limit from defaults
+        assert 'global-daily-limit' in constraints
+        global_limit = constraints['global-daily-limit']
+        assert global_limit.budget_limit.limit == 100.0
+        
+        # Should override shared-rate-limit with feature-specific value
+        assert 'shared-rate-limit' in constraints
+        rate_limit = constraints['shared-rate-limit']
+        assert rate_limit.rate_limit.per_minute == 100  # Feature override, not default 30
+        
+        # Should have feature-specific constraint
+        assert 'premium-specific' in constraints
+        premium_limit = constraints['premium-specific']
+        assert premium_limit.dimensions == ['organization']
+        assert premium_limit.budget_limit.limit == 500.0
 
 
 class TestLangfuseConfiguration:

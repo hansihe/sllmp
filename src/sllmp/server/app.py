@@ -1,6 +1,6 @@
 """Core server abstraction for sllmp."""
 
-from typing import Callable, Optional, List, Any
+from typing import Callable, Optional, List
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.middleware import Middleware
@@ -30,7 +30,7 @@ class SimpleProxyServer:
         """
         self.pipeline_factory = pipeline_factory
 
-    def create_asgi_app(self, debug: bool = True, middleware: Optional[List[Middleware]] = None) -> Starlette:
+    def create_asgi_app(self, debug: bool = True, middleware: Optional[List[Middleware]] = None, enable_tracing: bool = False) -> Starlette:
         """
         Create and configure the ASGI application.
 
@@ -48,11 +48,17 @@ class SimpleProxyServer:
             Route('/v1/chat/completions', self._create_chat_completions_handler(), methods=['POST']),
         ]
 
-        return Starlette(
+        app = Starlette(
             debug=debug,
             routes=routes,
             middleware=middleware or []
         )
+
+        if enable_tracing:
+            from opentelemetry.instrumentation.starlette import StarletteInstrumentor
+            StarletteInstrumentor.instrument_app(app)
+
+        return app
 
     def _create_chat_completions_handler(self):
         """Create the chat completions handler with this server's pipeline."""
