@@ -46,6 +46,7 @@ class StreamError(PipelineError):
 class ValidationError(PipelineError):
     """Error due to invalid request parameters."""
     field_name: Optional[str] = None
+    status_code: int = 422
     error_type: str = field(default="validation_error", init=False)
 
     def _extra_fields(self) -> Dict[str, Any]:

@@ -425,10 +425,42 @@ class TestRedisImportError:
     """Test behavior when Redis is not installed."""
     
     def test_import_error_handling(self):
-        # Test that module handles Redis import error gracefully
-        with patch.dict('sys.modules', {'redis.asyncio': None}):
+        # Test that module handles Redis import error gracefully  
+        import sys
+        import importlib
+        
+        # Save original redis module if it exists
+        original_redis = sys.modules.get('redis.asyncio')
+        limit_redis_module = None
+        
+        try:
+            # First import the module normally to get a reference
+            from simple_llm_proxy.middleware.limit import limit_redis as limit_redis_module
+            
+            # Remove redis from modules to simulate import error
+            if 'redis.asyncio' in sys.modules:
+                del sys.modules['redis.asyncio']
+            
+            # Set up import error simulation
+            sys.modules['redis.asyncio'] = None
+            
+            # Reload the module so the import error takes effect
+            importlib.reload(limit_redis_module)
+            
+            # Now try to create - should fail due to import error check
             with pytest.raises(ImportError, match="Redis is not installed"):
-                RedisLimitBackend()
+                limit_redis_module.RedisLimitBackend()
+                
+        finally:
+            # Restore original state
+            if original_redis is not None:
+                sys.modules['redis.asyncio'] = original_redis
+            elif 'redis.asyncio' in sys.modules and sys.modules['redis.asyncio'] is None:
+                del sys.modules['redis.asyncio']
+            
+            # Reload the module back to original state if we have a reference
+            if limit_redis_module is not None:
+                importlib.reload(limit_redis_module)
 
 
 if __name__ == "__main__":

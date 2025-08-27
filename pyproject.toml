@@ -62,6 +62,7 @@ addopts = ["-v", "--tb=short"]
 asyncio_mode = "auto"
 markers = [
     "redis: marks tests as requiring Redis (deselect with '-m \"not redis\"')",
+    "containers: marks tests as requiring Docker containers (deselect with '-m \"not containers\"')",
 ]
 
 [tool.ruff]
@@ -90,4 +91,5 @@ dev-dependencies = [
     "httpx>=0.24.0",
     "ruff>=0.1.0",
     "mypy>=1.7.0",
+    "testcontainers[redis]>=4.12.0",
 ]

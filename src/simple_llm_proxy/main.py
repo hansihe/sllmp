@@ -9,68 +9,15 @@ from starlette.requests import Request
 
 from .pipeline import create_request_context, PipelineError, execute_pipeline
 from .context import PipelineAction, NCompletionParams, RequestContext
-from .error import AuthenticationError, RateLimitError, InternalError
+from .error import AuthenticationError, RateLimitError, InternalError, ValidationError
 from .middleware import (
     logging_middleware,
     observability_middleware,
     limit_enforcement_middleware,
-    retry_middleware
+    retry_middleware,
+    create_validation_middleware
 )
 
-
-# Legacy classes kept for backward compatibility with existing tests
-# TODO: These can be removed once tests are updated to use the pipeline directly
-
-class OpenAIMessage:
-    """Legacy message class for backward compatibility."""
-    def __init__(self, role: str, content: Union[str, List[Dict]], name: Optional[str] = None):
-        self.role = role
-        self.content = content
-        self.name = name
-
-    def has_images(self) -> bool:
-        """Check if message contains image content"""
-        if isinstance(self.content, list):
-            return any(item.get("type") == "image_url" for item in self.content)
-        return False
-
-    def get_text_content(self) -> str:
-        """Extract text content from message"""
-        if isinstance(self.content, str):
-            return self.content
-        elif isinstance(self.content, list):
-            text_parts = [item.get("text", "") for item in self.content if item.get("type") == "text"]
-            return "".join(text_parts)
-        return ""
-
-    def get_image_urls(self) -> List[str]:
-        """Extract image URLs from message"""
-        if isinstance(self.content, list):
-            return [
-                item.get("image_url", {}).get("url", "")
-                for item in self.content
-                if item.get("type") == "image_url"
-            ]
-        return []
-
-
-class ChatCompletionRequest:
-    """Legacy request class for backward compatibility."""
-    def __init__(self, data: Dict):
-        self.model = data.get("model", "openai:gpt-3.5-turbo")
-        self.messages = [OpenAIMessage(**msg) for msg in data.get("messages", [])]
-        self.temperature = data.get("temperature", 1.0)
-        self.top_p = data.get("top_p", 1.0)
-        self.max_tokens = data.get("max_tokens")
-        self.stream = data.get("stream", False)
-        self.presence_penalty = data.get("presence_penalty", 0.0)
-        self.frequency_penalty = data.get("frequency_penalty", 0.0)
-        self.logit_bias = data.get("logit_bias", {})
-        self.user = data.get("user")
-        self.n = data.get("n", 1)
-        self.stop = data.get("stop")
-        self.tools = data.get("tools")
-        self.tool_choice = data.get("tool_choice")
 
 
 async def chat_completions(request: Request):
@@ -81,7 +28,18 @@ async def chat_completions(request: Request):
     enabling composable request/response processing, monitoring, and control.
     """
     try:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except (ValueError, json.JSONDecodeError) as e:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "message": f"Invalid JSON in request body: {str(e)}",
+                        "type": "invalid_request_error"
+                    }
+                }
+            )
 
         # Extract client metadata from request
         client_metadata = {
@@ -93,6 +51,19 @@ async def chat_completions(request: Request):
             'content_length': request.headers.get('content-length'),
         }
 
+        # Validate the request before creating the context
+        # Check for model field early to provide better error message
+        if 'model' not in body:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "message": "Missing required field: model",
+                        "type": "validation_error"
+                    }
+                }
+            )
+        
         # Create request context for pipeline processing
         # Convert dict to NCompletionParams with correct field mapping
         body_with_metadata = body.copy()
@@ -101,9 +72,28 @@ async def chat_completions(request: Request):
             body_with_metadata['model_id'] = body_with_metadata.pop('model')
         # Add required metadata field  
         body_with_metadata['metadata'] = body.get('metadata', {})
+        # Add default empty messages if not provided
+        if 'messages' not in body_with_metadata:
+            body_with_metadata['messages'] = []
         
-        completion_params = NCompletionParams(**body_with_metadata)
+        try:
+            completion_params = NCompletionParams(**body_with_metadata)
+        except Exception as e:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "message": f"Request validation failed: {str(e)}",
+                        "type": "validation_error"
+                    }
+                }
+            )
+        
         ctx = create_request_context(completion_params, **client_metadata)
+        
+        # Setup validation middleware  
+        validation_middleware = create_validation_middleware()
+        validation_middleware(ctx)
 
         if ctx.is_streaming:
             # Handle streaming requests through pipeline
@@ -159,7 +149,9 @@ async def chat_completions(request: Request):
                 status_code = 400  # Default to client error
                 
                 # Map specific error types to HTTP status codes
-                if isinstance(ctx.error, AuthenticationError):
+                if isinstance(ctx.error, ValidationError):
+                    status_code = getattr(ctx.error, 'status_code', 422)
+                elif isinstance(ctx.error, AuthenticationError):
                     status_code = 401
                 elif isinstance(ctx.error, RateLimitError):
                     status_code = 429

@@ -13,6 +13,7 @@ This package provides ready-to-use middleware for:
 # from .guardrails import ContentGuardrailMiddleware, ResponseValidatorMiddleware
 from .logging import logging_middleware, observability_middleware
 from .retry import retry_middleware
+from .validation import create_validation_middleware
 # from .routing import RoutingMiddleware
 from .limit import limit_enforcement_middleware, BudgetLimit, RateLimit, Constraint, InMemoryLimitBackend, RedisClusterLimitBackend, RedisLimitBackend
 
@@ -33,6 +34,9 @@ __all__ = [
     # Content Safety
     # 'ContentGuardrailMiddleware',
     # 'ResponseValidatorMiddleware',
+
+    # Validation
+    'create_validation_middleware',
 
     # Observability
     'logging_middleware',
