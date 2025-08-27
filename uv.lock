@@ -311,7 +311,7 @@ wheels = [
 
 [[package]]
 name = "langfuse"
-version = "3.3.0"
+version = "3.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
@@ -324,9 +324,9 @@ dependencies = [
     { name = "requests" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/28/bc/ee71839893de60de6fffd93b9ff874f50f13d5796de78fa721775b872b70/langfuse-3.3.0.tar.gz", hash = "sha256:1d951604da304a3e26d0e967adc15e5593a8d57c37bb0febe6bb1a790092f4c5", size = 153786 }
+sdist = { url = "https://files.pythonhosted.org/packages/96/17/0ae74bb28a702029209e220380154e81cd74f620dd186b58901be61e9b3d/langfuse-3.3.1.tar.gz", hash = "sha256:4dfa34665c59b447b3bfbfdf35f726a9f203fb6ad01555612cc1e461419853fb", size = 163761 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/33/0c3b1ef2969cd39bc8a4b411e11e0be14bfc85469d576b9c380c3e767c82/langfuse-3.3.0-py3-none-any.whl", hash = "sha256:12a3cc79f353181b5279385a0efb496368bfeacb7f1b1626df1ce4046d209770", size = 300301 },
+    { url = "https://files.pythonhosted.org/packages/6d/48/6624f21f558a04889fd881d4fd39ade0b751d5cf9e79989bd2101807621b/langfuse-3.3.1-py3-none-any.whl", hash = "sha256:ae1722944f1dbc557bdd6985ce057a729426192b31c80b44f3e0c37c7f290552", size = 317407 },
 ]
 
 [[package]]
@@ -766,7 +766,7 @@ requires-dist = [
     { name = "any-llm-sdk", extras = ["openai"], specifier = ">=0.16.0" },
     { name = "ezpubsub", specifier = ">=0.3.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.24.0" },
-    { name = "langfuse", specifier = ">=3.3.0" },
+    { name = "langfuse", specifier = ">=3.3.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.7.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },

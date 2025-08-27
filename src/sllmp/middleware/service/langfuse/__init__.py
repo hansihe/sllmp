@@ -11,8 +11,6 @@ from typing import Dict, Optional, cast
 from sllmp.error import MiddlewareError
 from sllmp.pipeline import RequestContext
 
-from any_llm.types.completion import ChatCompletionMessage
-
 if _has_langfuse:
     import langfuse.model
 
@@ -87,10 +85,14 @@ if _has_langfuse:
                 ctx.request.messages = prompt
 
             langfuse_state["used_prompt_client"] = prompt_client
+            langfuse_state["used_prompt_variables"] = prompt_variables
 
     def _observability_setup(ctx: RequestContext, client: langfuse.Langfuse):
         langfuse_state = ctx.state['langfuse']
-        root_span = client.start_span(name="chat-completion")
+        root_span = client.start_span(
+            name="chat-completion",
+            metadata=ctx.client_metadata,
+        )
         langfuse_state['root_span'] = root_span
 
         generation = None
@@ -99,14 +101,37 @@ if _has_langfuse:
             used_prompt_client = cast(Optional[langfuse.model.PromptClient], langfuse_state['used_prompt_client'])
 
             nonlocal generation
-            generation = root_span.start_generation(
-                name="llm-response",
+            generation = root_span.start_observation(
+                name="chat-completion",
+                as_type="generation",
                 input=extract_chat_prompt(ctx.request),
                 metadata=ctx.client_metadata,
+                model=ctx.request.model_id,
+                model_parameters=ctx.request.model_dump(
+                    exclude_none=True,
+                    include={
+                        'temperature',
+                        'top_p',
+                        'max_tokens',
+                        'stream',
+                        'n',
+                        'stop',
+                        'presence_penalty',
+                        'frequency_penalty',
+                        'seed',
+                        'parallel_tool_calls',
+                        'logprobs',
+                        'top_logprobs',
+                        'logit_bias',
+                        'max_completion_tokens',
+                        'reasoning_effort'
+                    },
+                ),
                 prompt=used_prompt_client,
             )
 
         def observability_post_llm(ctx: RequestContext):
+            nonlocal generation
             if generation is not None:
                 if ctx.has_error:
                     generation.update(
