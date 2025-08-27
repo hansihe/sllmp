@@ -128,7 +128,7 @@ async def chat_completions_handler(request: Request, pipeline):
 
             return StreamingResponse(
                 stream_generator(),
-                media_type="text/plain; charset=utf-8",
+                media_type="text/plain",
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
@@ -138,7 +138,7 @@ async def chat_completions_handler(request: Request, pipeline):
         else:
             # Handle non-streaming requests through pipeline
             async for _result in execute_pipeline(ctx):
-                break  # Get the final result for non-streaming
+                raise RuntimeError("unexpected chunk for non streaming request")
 
             # Check if pipeline resulted in error
             if ctx.has_error:

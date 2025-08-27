@@ -137,14 +137,12 @@ class TestPipelineErrorRecovery:
         ctx.add_middleware(failing_middleware)
 
         # Execute pipeline
-        final_ctx = None
         async for result in execute_pipeline(ctx):
-            final_ctx = result
-            break
+            continue
 
         # Should capture error and set error state
-        assert final_ctx.has_error
-        assert final_ctx.pipeline_state == PipelineState.ERROR
+        assert ctx.has_error
+        assert ctx.pipeline_state == PipelineState.ERROR
 
     async def test_error_in_streaming_chunk_processing(self, basic_params):
         """Test error handling during streaming chunk processing."""
@@ -184,15 +182,11 @@ class TestPipelineErrorRecovery:
             ctx.add_middleware(error_prone_middleware)
 
             chunks = []
-            final_ctx = None
             async for item in execute_pipeline(ctx):
-                if isinstance(item, RequestContext):
-                    final_ctx = item
-                else:
-                    chunks.append(item)
+                chunks.append(item)
 
             # Should handle error gracefully
-            assert final_ctx.has_error or len(chunks) >= 1
+            assert ctx.has_error or len(chunks) >= 1
 
     async def test_pipeline_state_consistency_after_error(self, basic_params):
         """Test pipeline state remains consistent after errors."""
@@ -211,17 +205,15 @@ class TestPipelineErrorRecovery:
         ctx.add_middleware(error_tracking_middleware)
 
         # Execute pipeline
-        final_ctx = None
         async for result in execute_pipeline(ctx):
-            final_ctx = result
-            break
+            continue
 
         # Verify consistent error state
-        assert final_ctx.has_error
-        assert not final_ctx.has_response
-        assert isinstance(final_ctx.error, ValidationError)
-        assert final_ctx.request_id is not None
-        assert final_ctx.original_request == basic_params
+        assert ctx.has_error
+        assert not ctx.has_response
+        assert isinstance(ctx.error, ValidationError)
+        assert ctx.request_id is not None
+        assert ctx.original_request == basic_params
 
 
 class TestBoundaryConditions:
@@ -329,8 +321,9 @@ class TestConcurrencyAndRaceConditions:
             tasks = []
             for ctx in contexts:
                 async def execute_ctx(context):
-                    async for result in execute_pipeline(context):
-                        return result
+                    async for _result in execute_pipeline(context):
+                        continue
+                    return context
                 tasks.append(execute_ctx(ctx))
 
             results = await asyncio.gather(*tasks)
@@ -512,17 +505,13 @@ class TestRecoveryScenarios:
             ctx = create_request_context(streaming_params)
 
             collected_chunks = []
-            final_ctx = None
             async for item in execute_pipeline(ctx):
-                if isinstance(item, RequestContext):
-                    final_ctx = item
-                else:
-                    collected_chunks.append(item)
+                collected_chunks.append(item)
 
             # Should have received some chunks before failure
             assert len(collected_chunks) >= 1
             # Final state should reflect the error occurred
-            assert final_ctx.has_error
+            assert ctx.has_error
 
     async def test_middleware_chain_partial_failure(self, basic_params):
         """Test pipeline continues when some middleware fails."""
@@ -556,16 +545,14 @@ class TestRecoveryScenarios:
             ctx.add_middleware(failing_middleware)
             ctx.add_middleware(working_middleware_2)
 
-            final_ctx = None
-            async for result in execute_pipeline(ctx):
-                final_ctx = result
-                break
+            async for _result in execute_pipeline(ctx):
+                continue
 
             # Should have attempted all middleware
             assert "middleware1_executed" in results
             assert "failing_middleware_attempted" in results
             # Pipeline should end in error state due to middleware failure
-            assert final_ctx.has_error
+            assert ctx.has_error
 
 
 if __name__ == "__main__":
