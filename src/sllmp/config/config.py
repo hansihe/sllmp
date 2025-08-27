@@ -303,23 +303,19 @@ class ConfigResolver:
 
         # Check for missing environment variables in dry-run mode
         for feature_name, feature in self.config.features.items():
-            try:
-                resolved = self.resolve_feature_config(feature_name)
+            resolved = self.resolve_feature_config(feature_name)
 
-                # Check for required API keys
-                provider = resolved.get('provider', 'openai')
-                api_key_field = f"{provider}_api_key"
+            # Check for required API keys
+            provider = resolved.get('provider', 'openai')
+            api_key_field = f"{provider}_api_key"
 
-                if not resolved.get(api_key_field):
-                    warnings.append(f"Feature '{feature_name}' using provider '{provider}' but no API key configured")
+            if not resolved.get(api_key_field):
+                warnings.append(f"Feature '{feature_name}' using provider '{provider}' but no API key configured")
 
-                # Check for Langfuse config
-                langfuse_config = resolved.get('langfuse', {})
-                if langfuse_config.get('enabled', True) and not langfuse_config.get('secret_key'):
-                    warnings.append(f"Feature '{feature_name}' has Langfuse enabled but no secret key configured")
-
-            except Exception as e:
-                warnings.append(f"Configuration error for feature '{feature_name}': {e}")
+            # Check for Langfuse config
+            langfuse_config = resolved.get('langfuse', {})
+            if langfuse_config.get('enabled', True) and not langfuse_config.get('secret_key'):
+                warnings.append(f"Feature '{feature_name}' has Langfuse enabled but no secret key configured")
 
         return warnings
 
