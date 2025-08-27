@@ -707,7 +707,7 @@ wheels = [
 ]
 
 [[package]]
-name = "simple-llm-proxy"
+name = "sllmp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -768,6 +768,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "ruff", specifier = ">=0.1.0" },
+    { name = "sllmp", editable = "." },
     { name = "testcontainers", extras = ["redis"], specifier = ">=4.12.0" },
 ]
 

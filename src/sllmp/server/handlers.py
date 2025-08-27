@@ -2,7 +2,6 @@
 
 import json
 import time
-from typing import Dict, List, Optional, Union
 
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.requests import Request
@@ -100,9 +99,12 @@ async def chat_completions_handler(request: Request, pipeline):
                     if isinstance(item, RequestContext):
                         # Check if pipeline resulted in error
                         if item.has_error:
+                            error = item.error
+                            assert error is not None
+
                             # Send error as SSE chunk and terminate
                             error_chunk = {
-                                "error": item.error.to_dict()["error"]
+                                "error": error.to_dict()["error"]
                             }
                             yield f"data: {json.dumps(error_chunk)}\n\n"
                             yield "data: [DONE]\n\n"
@@ -126,33 +128,35 @@ async def chat_completions_handler(request: Request, pipeline):
 
             return StreamingResponse(
                 stream_generator(),
-                media_type="text/plain",
+                media_type="text/plain; charset=utf-8",
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
-                    "Content-Type": "text/plain; charset=utf-8"
+                    "X-Accel-Buffering": "no"
                 }
             )
         else:
             # Handle non-streaming requests through pipeline
-            async for result in execute_pipeline(ctx):
-                ctx = result
+            async for _result in execute_pipeline(ctx):
                 break  # Get the final result for non-streaming
 
             # Check if pipeline resulted in error
             if ctx.has_error:
+                error = ctx.error
+                assert error is not None
+
                 # Return error response with appropriate status code
-                error_dict = ctx.error.to_dict()
+                error_dict = error.to_dict()
                 status_code = 400  # Default to client error
 
                 # Map specific error types to HTTP status codes
-                if isinstance(ctx.error, ValidationError):
-                    status_code = getattr(ctx.error, 'status_code', 422)
-                elif isinstance(ctx.error, AuthenticationError):
+                if isinstance(error, ValidationError):
+                    status_code = getattr(error, 'status_code', 422)
+                elif isinstance(error, AuthenticationError):
                     status_code = 401
-                elif isinstance(ctx.error, RateLimitError):
+                elif isinstance(error, RateLimitError):
                     status_code = 429
-                elif isinstance(ctx.error, InternalError):
+                elif isinstance(error, InternalError):
                     status_code = 500
 
                 return JSONResponse(error_dict, status_code=status_code)

@@ -11,7 +11,7 @@ approach while keeping the same generic middleware components.
 
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
-from simple_llm_proxy.util.signal import HaltExecution
+from sllmp.util.signal import HaltExecution
 
 from .. import logger
 from ..pipeline import RequestContext

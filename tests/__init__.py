@@ -1,1 +1,1 @@
-"""Tests for simple_llm_proxy."""
+"""Tests for sllmp."""

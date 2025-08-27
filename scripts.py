@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Development scripts for simple_llm_proxy."""
+"""Development scripts for sllmp."""
 
 import subprocess
 import sys
@@ -25,8 +25,8 @@ def test_verbose() -> int:
 def test_coverage() -> int:
     """Run tests with coverage."""
     return run_command([
-        "pytest", 
-        "--cov=simple_llm_proxy", 
+        "pytest",
+        "--cov=sllmp",
         "--cov-report=html",
         "--cov-report=term"
     ])
@@ -50,10 +50,10 @@ def type_check() -> int:
 def dev() -> int:
     """Start development server."""
     return run_command([
-        "uvicorn", 
-        "simple_llm_proxy.main:app", 
-        "--reload", 
-        "--host", "0.0.0.0", 
+        "uvicorn",
+        "sllmp.main:app",
+        "--reload",
+        "--host", "0.0.0.0",
         "--port", "8000"
     ])
 
@@ -61,9 +61,9 @@ def dev() -> int:
 def serve() -> int:
     """Start production server."""
     return run_command([
-        "uvicorn", 
-        "simple_llm_proxy.main:app", 
-        "--host", "0.0.0.0", 
+        "uvicorn",
+        "sllmp.main:app",
+        "--host", "0.0.0.0",
         "--port", "8000"
     ])
 
@@ -73,7 +73,7 @@ def main() -> None:
     if len(sys.argv) < 2:
         print("Available commands:")
         print("  test          - Run tests")
-        print("  test-verbose  - Run tests with verbose output")  
+        print("  test-verbose  - Run tests with verbose output")
         print("  test-coverage - Run tests with coverage")
         print("  lint          - Run linting")
         print("  format        - Format code")
@@ -81,9 +81,9 @@ def main() -> None:
         print("  dev           - Start development server")
         print("  serve         - Start production server")
         sys.exit(1)
-    
+
     command = sys.argv[1].replace("-", "_")
-    
+
     if hasattr(sys.modules[__name__], command):
         func = getattr(sys.modules[__name__], command)
         sys.exit(func())

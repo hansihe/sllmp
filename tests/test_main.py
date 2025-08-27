@@ -3,7 +3,7 @@ import pytest
 import httpx
 from unittest.mock import AsyncMock, patch
 from any_llm.types.completion import ChatCompletionChunk
-from simple_llm_proxy import SimpleProxyServer
+from sllmp import SimpleProxyServer
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ def mock_llm_completion():
         else:
             return create_mock_completion(**kwargs)
 
-    with patch('simple_llm_proxy.pipeline.any_llm.acompletion') as mock_completion:
+    with patch('sllmp.pipeline.any_llm.acompletion') as mock_completion:
         mock_completion.side_effect = mock_acompletion
         yield mock_completion
 

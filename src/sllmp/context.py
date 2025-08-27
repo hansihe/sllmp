@@ -215,3 +215,7 @@ class RequestContext:
         """Set error and clear any response."""
         self.error = error
         self.response = None
+
+        # Automatically transition to error state when error is set
+        if self.next_pipeline_state is None:
+            self.next_pipeline_state = PipelineState.ERROR

@@ -12,11 +12,11 @@ import any_llm
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 from typing import AsyncIterator
 
-from simple_llm_proxy.util.signal import SignalExecutionResult
+from sllmp.util.signal import SignalExecutionResult
 
 from .error import (
-    PipelineError, MiddlewareError, StreamError, AuthenticationError, 
-    RateLimitError, ContentPolicyError, ModelNotFoundError, NetworkError, 
+    PipelineError, MiddlewareError, StreamError, AuthenticationError,
+    RateLimitError, ContentPolicyError, ModelNotFoundError, NetworkError,
     ServiceUnavailableError, InternalError
 )
 from .context import RequestContext, PipelineAction, NCompletionParams, PipelineState
@@ -152,12 +152,11 @@ from .context import RequestContext, PipelineAction, NCompletionParams, Pipeline
 #                 callable(getattr(self.__class__, 'process_chunk', None)) and
 #                 getattr(self.__class__, 'process_chunk') is not Middleware.process_chunk)
 
-async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletionChunk | RequestContext, None]:
+async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletionChunk, None]:
     # Setup stage
     assert(ctx.pipeline_state == PipelineState.SETUP)
     _handle_signal_errors(ctx, await ctx.pipeline.setup.emit(ctx))
     if ctx.has_error:
-        yield ctx
         return
 
     assert ctx.next_pipeline_state == None
@@ -205,7 +204,6 @@ async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletion
 
             case PipelineState.COMPLETE:
                 _handle_signal_errors(ctx, await ctx.pipeline.response_complete.emit(ctx))
-                yield ctx
                 return
 
         ctx.pipeline_state = next_state
@@ -236,26 +234,26 @@ def _extract_provider_from_model(model_id: str) -> str:
 def classify_llm_error(exception: Exception, request_id: str, provider: str = "unknown") -> PipelineError:
     """
     Classify an exception from any_llm into appropriate pipeline error.
-    
+
     Args:
         exception: The original exception from any_llm
         request_id: Request ID for error tracking
         provider: LLM provider name
-        
+
     Returns:
         Appropriate PipelineError subclass
     """
     error_msg = str(exception)
     error_msg_lower = error_msg.lower()
-    
+
     # Authentication errors
     if any(term in error_msg_lower for term in ["unauthorized", "invalid api key", "authentication", "api key"]):
         return AuthenticationError(
             message=f"Authentication failed with {provider}: {error_msg}",
             request_id=request_id
         )
-    
-    # Rate limit errors  
+
+    # Rate limit errors
     if any(term in error_msg_lower for term in ["rate limit", "quota exceeded", "too many requests"]):
         # Try to extract retry_after if available
         retry_after = None
@@ -264,14 +262,14 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
         match = re.search(r'try again in (\d+) seconds?', error_msg_lower)
         if match:
             retry_after = int(match.group(1))
-            
+
         return RateLimitError(
             message=f"Rate limit exceeded for {provider}: {error_msg}",
             request_id=request_id,
             provider=provider,
             retry_after=retry_after
         )
-    
+
     # Content policy errors
     if any(term in error_msg_lower for term in ["content policy", "safety", "filtered", "inappropriate"]):
         return ContentPolicyError(
@@ -279,7 +277,7 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
             request_id=request_id,
             provider=provider
         )
-    
+
     # Model errors
     if any(term in error_msg_lower for term in ["model not found", "invalid model", "model.*not.*available"]):
         return ModelNotFoundError(
@@ -288,7 +286,7 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
             provider=provider,
             model_id="unknown"  # Could extract from context
         )
-    
+
     # Network errors
     if any(term in error_msg_lower for term in ["connection", "timeout", "network", "dns", "unreachable"]):
         return NetworkError(
@@ -296,7 +294,7 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
             request_id=request_id,
             provider=provider
         )
-    
+
     # Service errors (5xx status codes)
     if any(term in error_msg_lower for term in ["service unavailable", "internal server error", "502", "503", "504"]):
         return ServiceUnavailableError(
@@ -304,7 +302,7 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
             request_id=request_id,
             provider=provider
         )
-    
+
     # Default to internal error for unclassified exceptions
     return InternalError(
         message=f"Unhandled error from {provider}: {error_msg}",
@@ -315,10 +313,10 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
 def _create_error_chunk(error: PipelineError, ctx: RequestContext) -> dict:
     """Create an error chunk for streaming responses."""
     import time
-    
+
     return {
         "id": f"error_{ctx.request_id}",
-        "object": "chat.completion.chunk", 
+        "object": "chat.completion.chunk",
         "created": int(time.time()),
         "model": ctx.request.model_id,
         "choices": [{
@@ -347,9 +345,9 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
         # Yield chunks from the any_llm stream
         async for chunk in completion_stream:
             yield chunk
-            
+
     except Exception as e:
-        # Classify and set pipeline error  
+        # Classify and set pipeline error
         provider = _extract_provider_from_model(ctx.request.model_id)
         pipeline_error = classify_llm_error(e, ctx.request_id, provider)
         ctx.set_error(pipeline_error)

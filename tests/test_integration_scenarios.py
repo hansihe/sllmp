@@ -12,10 +12,10 @@ import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from typing import Dict, Any, List
 
-from simple_llm_proxy import SimpleProxyServer
-from simple_llm_proxy.context import Pipeline, RequestContext
-from simple_llm_proxy.middleware import logging_middleware, retry_middleware
-from simple_llm_proxy.error import ValidationError, RateLimitError
+from sllmp import SimpleProxyServer
+from sllmp.context import Pipeline, RequestContext
+from sllmp.middleware import logging_middleware, retry_middleware
+from sllmp.error import ValidationError, RateLimitError
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 
 
@@ -24,11 +24,15 @@ def mock_llm_completion():
     """Mock any_llm.acompletion for integration tests."""
     def create_completion(**kwargs):
         # Return a dictionary that can be serialized, not a ChatCompletion object
+        # Debug: print what model_id we're receiving
+        # print(f"DEBUG: create_completion received kwargs: {kwargs}")
+        # The kwargs contain 'model' not 'model_id' based on debug output
+        model_id = kwargs.get("model", kwargs.get("model_id", "openai:gpt-3.5-turbo"))
         return {
             "id": "chatcmpl-integration",
             "object": "chat.completion",
             "created": 1234567890,
-            "model": kwargs.get("model_id", "openai:gpt-3.5-turbo"),
+            "model": model_id,  # This will reflect the actual requested model_id
             "choices": [{
                 "index": 0,
                 "message": {
@@ -39,7 +43,7 @@ def mock_llm_completion():
             }],
             "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
         }
-    
+
     async def create_stream(**kwargs):
         chunks = [
             ChatCompletionChunk(
@@ -50,7 +54,7 @@ def mock_llm_completion():
                 choices=[{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}]
             ),
             ChatCompletionChunk(
-                id="chatcmpl-integration", 
+                id="chatcmpl-integration",
                 object="chat.completion.chunk",
                 created=1234567890,
                 model=kwargs.get("model_id", "openai:gpt-4"),
@@ -58,7 +62,7 @@ def mock_llm_completion():
             ),
             ChatCompletionChunk(
                 id="chatcmpl-integration",
-                object="chat.completion.chunk", 
+                object="chat.completion.chunk",
                 created=1234567890,
                 model=kwargs.get("model_id", "openai:gpt-4"),
                 choices=[{"index": 0, "delta": {"content": " response"}, "finish_reason": None}]
@@ -66,21 +70,21 @@ def mock_llm_completion():
             ChatCompletionChunk(
                 id="chatcmpl-integration",
                 object="chat.completion.chunk",
-                created=1234567890, 
+                created=1234567890,
                 model=kwargs.get("model_id", "openai:gpt-4"),
                 choices=[{"index": 0, "delta": {}, "finish_reason": "stop"}]
             )
         ]
         for chunk in chunks:
             yield chunk
-    
+
     async def mock_completion(stream=False, **kwargs):
         if stream:
             return create_stream(**kwargs)
         else:
             return create_completion(**kwargs)
-    
-    with patch('simple_llm_proxy.pipeline.any_llm.acompletion', side_effect=mock_completion):
+
+    with patch('sllmp.pipeline.any_llm.acompletion', side_effect=mock_completion):
         yield
 
 
@@ -89,7 +93,7 @@ async def basic_client(mock_llm_completion):
     """HTTP client for basic server without custom middleware."""
     server = SimpleProxyServer()
     app = server.create_asgi_app(debug=True)
-    
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
         yield client
 
@@ -99,7 +103,7 @@ async def custom_pipeline_client(mock_llm_completion):
     """HTTP client with custom middleware pipeline."""
     def create_custom_pipeline():
         pipeline = Pipeline()
-        
+
         # Add custom middleware for testing
         def rate_limiting_middleware(ctx: RequestContext):
             async def check_rate_limit(ctx: RequestContext):
@@ -112,9 +116,9 @@ async def custom_pipeline_client(mock_llm_completion):
                         retry_after=60
                     ))
                     return
-            
+
             ctx.pipeline.pre.connect(check_rate_limit)
-        
+
         def content_filter_middleware(ctx: RequestContext):
             async def filter_content(ctx: RequestContext):
                 if ctx.request.messages:
@@ -125,19 +129,19 @@ async def custom_pipeline_client(mock_llm_completion):
                             request_id=ctx.request_id
                         ))
                         return
-            
+
             ctx.pipeline.pre.connect(filter_content)
-        
+
         # Add basic middleware
         pipeline.setup.connect(rate_limiting_middleware)
         pipeline.setup.connect(content_filter_middleware)
         pipeline.setup.connect(logging_middleware())
-        
+
         return pipeline
-    
+
     server = SimpleProxyServer(pipeline_factory=create_custom_pipeline)
     app = server.create_asgi_app(debug=True)
-    
+
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
         yield client
 
@@ -153,8 +157,8 @@ class TestBasicIntegration:
         data = response.json()
         assert data["status"] == "ok"
         assert "timestamp" in data
-        
-        # Test dedicated health endpoint  
+
+        # Test dedicated health endpoint
         response = await basic_client.get("/health")
         assert response.status_code == 200
         data = response.json()
@@ -174,13 +178,13 @@ class TestBasicIntegration:
             "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Hello, world!"}]
         }
-        
+
         response = await basic_client.post("/v1/chat/completions", json=request_data)
         if response.status_code != 200:
             print(f"Response status: {response.status_code}")
             print(f"Response content: {response.text}")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert "id" in data
         assert data["object"] == "chat.completion"
@@ -196,22 +200,22 @@ class TestBasicIntegration:
             "messages": [{"role": "user", "content": "Tell me a story"}],
             "stream": True
         }
-        
+
         response = await basic_client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/plain; charset=utf-8"
-        
+
         # Parse streaming response
         content = response.text
         lines = content.strip().split('\n')
-        
+
         # Should have data lines and final [DONE]
         data_lines = [line for line in lines if line.startswith('data: ') and not line.endswith('[DONE]')]
         done_lines = [line for line in lines if line.endswith('[DONE]')]
-        
+
         assert len(data_lines) >= 3  # At least 3 content chunks
         assert len(done_lines) == 1
-        
+
         # Verify first chunk structure
         first_chunk_data = data_lines[0][6:]  # Remove 'data: ' prefix
         chunk = json.loads(first_chunk_data)
@@ -221,10 +225,10 @@ class TestBasicIntegration:
     async def test_concurrent_requests(self, basic_client):
         """Test server handles concurrent requests correctly."""
         request_data = {
-            "model": "openai:gpt-3.5-turbo", 
+            "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Concurrent test"}]
         }
-        
+
         # Send 5 concurrent requests
         tasks = [
             basic_client.post("/v1/chat/completions", json={
@@ -233,12 +237,12 @@ class TestBasicIntegration:
             })
             for i in range(5)
         ]
-        
+
         responses = await asyncio.gather(*tasks)
-        
+
         # All should succeed
         assert all(r.status_code == 200 for r in responses)
-        
+
         # Each should have unique content reflecting the request
         contents = [r.json()["choices"][0]["message"]["content"] for r in responses]
         assert len(set(contents)) == 5  # All unique responses
@@ -255,20 +259,20 @@ class TestMiddlewareIntegration:
             "messages": [{"role": "user", "content": "Normal request"}],
             "metadata": {"user_id": "normal_user"}
         }
-        
+
         response = await custom_pipeline_client.post("/v1/chat/completions", json=normal_request)
         assert response.status_code == 200
-        
+
         # Rate limited user should be blocked
         limited_request = {
-            "model": "openai:gpt-3.5-turbo", 
+            "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Should be blocked"}],
             "metadata": {"user_id": "rate_limited_user"}
         }
-        
+
         response = await custom_pipeline_client.post("/v1/chat/completions", json=limited_request)
         assert response.status_code == 429  # Rate limit error
-        
+
         data = response.json()
         assert "error" in data
         assert data["error"]["type"] == "rate_limit_error"
@@ -280,19 +284,19 @@ class TestMiddlewareIntegration:
             "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Tell me about the weather"}]
         }
-        
+
         response = await custom_pipeline_client.post("/v1/chat/completions", json=normal_request)
         assert response.status_code == 200
-        
+
         # Blocked content should be rejected
         blocked_request = {
             "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "This content should be blocked"}]
         }
-        
+
         response = await custom_pipeline_client.post("/v1/chat/completions", json=blocked_request)
         assert response.status_code == 422  # Validation error
-        
+
         data = response.json()
         assert "error" in data
         assert data["error"]["type"] == "validation_error"
@@ -306,10 +310,10 @@ class TestMiddlewareIntegration:
             "messages": [{"role": "user", "content": "Test middleware chain"}],
             "metadata": {"user_id": "normal_user"}
         }
-        
+
         response = await custom_pipeline_client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
-        
+
         # Verify response shows middleware processing occurred
         data = response.json()
         assert "id" in data
@@ -326,7 +330,7 @@ class TestErrorHandlingIntegration:
             content="invalid json",
             headers={"content-type": "application/json"}
         )
-        
+
         assert response.status_code == 400
         data = response.json()
         assert "error" in data
@@ -350,10 +354,10 @@ class TestErrorHandlingIntegration:
             "model": "openai:gpt-3.5-turbo",
             "messages": ["invalid message format"]  # Should be objects
         }
-        
+
         response = await basic_client.post("/v1/chat/completions", json=invalid_request)
         assert response.status_code == 422
-        
+
         data = response.json()
         assert "error" in data
         assert data["error"]["type"] == "validation_error"
@@ -365,27 +369,27 @@ class TestErrorHandlingIntegration:
             "messages": [{"role": "user", "content": "Hello"}],
             "temperature": 5.0  # Too high
         }
-        
+
         response = await basic_client.post("/v1/chat/completions", json=invalid_request)
         assert response.status_code == 422
-        
+
         data = response.json()
         assert "error" in data
         assert "temperature" in data["error"]["message"]
 
-    @patch('simple_llm_proxy.pipeline.any_llm.acompletion')
+    @patch('sllmp.pipeline.any_llm.acompletion')
     async def test_llm_provider_error_handling(self, mock_completion, basic_client):
         """Test handling of LLM provider errors."""
         mock_completion.side_effect = Exception("Provider API error")
-        
+
         request_data = {
             "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "This will fail"}]
         }
-        
+
         response = await basic_client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 500  # Internal server error
-        
+
         data = response.json()
         assert "error" in data
         assert data["error"]["type"] == "internal_error"
@@ -398,18 +402,18 @@ class TestRealWorldScenarios:
         """Test handling of requests with large context."""
         large_context = [
             {"role": "user", "content": "Context message " + "a" * 1000},
-            {"role": "assistant", "content": "Response " + "b" * 1000}, 
+            {"role": "assistant", "content": "Response " + "b" * 1000},
             {"role": "user", "content": "Follow up question with more context " + "c" * 1000}
         ]
-        
+
         request_data = {
             "model": "openai:gpt-3.5-turbo",
             "messages": large_context
         }
-        
+
         response = await basic_client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
-        
+
         data = response.json()
         assert "choices" in data
         assert len(data["choices"]) > 0
@@ -419,7 +423,7 @@ class TestRealWorldScenarios:
         multimodal_request = {
             "model": "openai:gpt-4-vision-preview",
             "messages": [{
-                "role": "user", 
+                "role": "user",
                 "content": [
                     {"type": "text", "text": "What's in this image?"},
                     {
@@ -429,10 +433,10 @@ class TestRealWorldScenarios:
                 ]
             }]
         }
-        
+
         response = await basic_client.post("/v1/chat/completions", json=multimodal_request)
         assert response.status_code == 200
-        
+
         data = response.json()
         assert data["model"] == "openai:gpt-4-vision-preview"
 
@@ -448,10 +452,10 @@ class TestRealWorldScenarios:
             "frequency_penalty": 0.2,
             "user": "integration_test_user"
         }
-        
+
         response = await basic_client.post("/v1/chat/completions", json=advanced_request)
         assert response.status_code == 200
-        
+
         data = response.json()
         assert data["model"] == "openai:gpt-4"
         assert "usage" in data
@@ -463,11 +467,11 @@ class TestRealWorldScenarios:
             "messages": [{"role": "user", "content": "Long story"}],
             "stream": True
         }
-        
+
         # Start streaming request
         response = await basic_client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
-        
+
         # Verify we get streaming response format
         content = response.text
         assert "data:" in content
@@ -487,10 +491,10 @@ class TestCustomServerConfiguration:
                 max_delay=1.0
             ))
             return pipeline
-        
+
         server = SimpleProxyServer(pipeline_factory=create_retry_pipeline)
         app = server.create_asgi_app()
-        
+
         # Test with mocked failing then succeeding LLM call
         call_count = 0
         def failing_then_success(**kwargs):
@@ -503,14 +507,14 @@ class TestCustomServerConfiguration:
                 choices=[{"index": 0, "message": {"role": "assistant", "content": "Success after retry"}, "finish_reason": "stop"}],
                 usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
             )
-        
-        with patch('simple_llm_proxy.pipeline.any_llm.acompletion', side_effect=failing_then_success):
+
+        with patch('sllmp.pipeline.any_llm.acompletion', side_effect=failing_then_success):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
                 response = await client.post("/v1/chat/completions", json={
                     "model": "openai:gpt-3.5-turbo",
                     "messages": [{"role": "user", "content": "Test retry"}]
                 })
-                
+
                 assert response.status_code == 200
                 data = response.json()
                 assert "Success after retry" in data["choices"][0]["message"]["content"]
