@@ -62,7 +62,7 @@ class Constraint(BaseModel):
     dimensions: List[str] = Field(..., description="Constraint dimensions (feature, user_id, etc.)")
     budget_limit: Optional[BudgetLimit] = Field(None, description="Budget limit configuration")
     rate_limit: Optional[RateLimit] = Field(None, description="Rate limit configuration")
-    description: Optional[str] = Field(..., description="Human-readable description")
+    description: Optional[str] = Field(None, description="Human-readable description")
 
     @field_validator('dimensions')
     @classmethod
@@ -228,7 +228,7 @@ def limit_enforcement_middleware(
                                        f"Estimated cost: ${estimated_cost:.4f}",
                                 request_id=ctx.request_id,
                                 limit_type="budget_limit_exceeded",
-                                constraint_description=constraint.description,
+                                constraint_description=constraint.description or "",
                                 current_usage=f"${current_usage:.4f}",
                                 limit_value=f"${constraint.budget_limit.limit:.4f}"
                             )
@@ -250,7 +250,7 @@ def limit_enforcement_middleware(
                                f"Limit: {constraint.rate_limit.per_minute} requests/minute",
                         request_id=ctx.request_id,
                         limit_type="rate_limit_exceeded",
-                        constraint_description=constraint.description,
+                        constraint_description=constraint.description or "",
                         current_usage=f"{current_rate_usage} requests/minute",
                         limit_value=f"{constraint.rate_limit.per_minute} requests/minute"
                     )

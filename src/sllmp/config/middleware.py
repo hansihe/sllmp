@@ -9,18 +9,16 @@ Other organizations can replace this middleware with their own configuration
 approach while keeping the same generic middleware components.
 """
 
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING
 
+from sllmp import logger
+from sllmp.pipeline import RequestContext
 from sllmp.error import ValidationError
+from .config import ConfigResolver, ConfigurationError, ResolvedFeatureConfig
 
-from .. import logger
-from ..pipeline import RequestContext
-from .config import ConfigResolver, ConfigurationError
-
-# Import generic middleware (these have no config dependencies)
-from ..middleware.limit import limit_enforcement_middleware, BaseLimitBackend
-#from ..middleware.guardrails import ContentGuardrailMiddleware, ResponseValidatorMiddleware
-from ..middleware.logging import logging_middleware
+from sllmp.middleware.limit import limit_enforcement_middleware, BaseLimitBackend
+from sllmp.middleware.logging import logging_middleware
+from sllmp.middleware.retry import retry_middleware
 
 if TYPE_CHECKING:
     # Import for type hints only to avoid circular imports
@@ -76,8 +74,8 @@ def configuration_middleware(
             ctx.state['feature'] = {
                 'name': feature_name,
                 'config': feature_config,
-                'description': feature_config['feature_description'],
-                'owners': feature_config['feature_owners']
+                'description': feature_config.feature_description,
+                'owner': feature_config.owner
             }
 
             # Step 4: Apply request-level configuration
@@ -127,12 +125,12 @@ def _detect_feature(ctx: RequestContext, config: ConfigResolver) -> Optional[str
     # None return halts with error
     return None
 
-def _apply_request_config(ctx: RequestContext, config: Dict[str, Any]) -> None:
+def _apply_request_config(ctx: RequestContext, config: ResolvedFeatureConfig) -> None:
     """Apply configuration to the current request."""
 
     # Override model if specified in config
-    if config.get('model') and config['model'] != ctx.request.model_id:
-        ctx.request.model_id = config['model']
+    if config.model and config.model != ctx.request.model_id:
+        ctx.request.model_id = config.model
         ctx.metadata['model_overridden'] = True
 
     # # Apply prompt template if specified
@@ -141,17 +139,19 @@ def _apply_request_config(ctx: RequestContext, config: Dict[str, Any]) -> None:
     #     self._apply_prompt_template(ctx, prompt_template)
 
     # Store API key info for LLM execution (don't expose in logs)
-    provider = config.get('provider', 'openai')
-    api_key_field = f"{provider}_api_key"
-    if config.get(api_key_field):
-        ctx.metadata['api_key_configured'] = True
-        # API key will be retrieved securely during LLM execution
+    # provider = config.provider
+    # api_key = getattr(config, f"{provider}_api_key", None)
+    # if api_key:
+    #     ctx.metadata['api_key_configured'] = True
+    #     # API key will be retrieved securely during LLM execution
+
+    ctx.provider_keys = config.provider_api_keys
 
 async def _extend_pipeline_for_feature(
     ctx: RequestContext,
     config_resolver: ConfigResolver,
     limit_backend: Optional[BaseLimitBackend],
-    feature_config: Dict[str, Any]
+    feature_config: ResolvedFeatureConfig
 ) -> None:
     """
     Dynamically add middleware to the pipeline based on feature configuration.
@@ -161,7 +161,7 @@ async def _extend_pipeline_for_feature(
     """
 
     # Add budget enforcement middleware if budget constraints are configured
-    limit_constraints = config_resolver.get_limit_constraints(feature_config['feature_name'])
+    limit_constraints = config_resolver.get_limit_constraints(feature_config.feature_name)
     if limit_constraints:
         if limit_backend:
             ctx.add_middleware(limit_enforcement_middleware(
@@ -172,15 +172,16 @@ async def _extend_pipeline_for_feature(
             logger.warning("Budget constraints provided but no limit backend provided!")
 
     # Add Langfuse observability middleware if configured
-    langfuse_config = config_resolver.get_langfuse_config(feature_config['feature_name'])
+    langfuse_config = config_resolver.get_langfuse_config(feature_config.feature_name)
     if langfuse_config:
         # Import here to avoid circular imports
         from ..middleware.service.langfuse import langfuse_middleware
 
         ctx.add_middleware(langfuse_middleware(
-            public_key=langfuse_config['public_key'],
-            secret_key=langfuse_config['secret_key'],
-            base_url=langfuse_config['base_url']
+            public_key=langfuse_config.public_key,
+            secret_key=langfuse_config.secret_key,
+            base_url=langfuse_config.base_url,
+            default_prompt_label=langfuse_config.default_prompt_label
         ))
 
     # Add content guardrails middleware if configured
@@ -210,8 +211,12 @@ async def _extend_pipeline_for_feature(
     ctx.add_middleware(logging_middleware(
         log_requests=True,
         log_responses=True,
-        feature_name=feature_config['feature_name']
+        feature_name=feature_config.feature_name
     ))
+
+    # Add basic retry middleware
+    # TODO make configurable
+    ctx.add_middleware(retry_middleware())
 
 def _get_guardrail_policies(safety_level: str) -> List[str]:
     """Get guardrail policies based on safety level."""
@@ -234,7 +239,7 @@ async def after_llm(ctx: RequestContext) -> RequestContext:
         ctx.metadata['configuration_summary'] = {
             'feature_used': feature_info['name'],
             'feature_description': feature_info['description'],
-            'owners': feature_info['owners'],
+            'owner': feature_info['owner'],
             'model_overridden': ctx.metadata.get('model_overridden', False)
         }
 

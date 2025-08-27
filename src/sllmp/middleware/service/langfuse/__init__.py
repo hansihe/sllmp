@@ -20,7 +20,12 @@ if _has_langfuse:
 
     LANGFUSE_CLIENTS: Dict[str, langfuse.Langfuse] = {}
 
-    def langfuse_middleware(public_key: str, secret_key: str, base_url: str = "https://cloud.langfuse.com"):
+    def langfuse_middleware(
+        public_key: str,
+        secret_key: str,
+        base_url: str = "https://cloud.langfuse.com",
+        default_prompt_label: str = "latest"
+    ):
         def setup(ctx: RequestContext):
             """
             Configures the Langfuse for the request.
@@ -38,7 +43,8 @@ if _has_langfuse:
                 LANGFUSE_CLIENTS[public_key] = client
 
             ctx.state['langfuse'] = {
-                'client': client
+                'client': client,
+                'prompt_label': default_prompt_label
             }
 
             # Propmpt management
@@ -57,11 +63,13 @@ if _has_langfuse:
             langfuse_state = ctx.state['langfuse']
             client = cast(langfuse.Langfuse, langfuse_state['client'])
 
+            prompt_label = langfuse_state['prompt_label']
+
             try:
-                prompt_client = client.get_prompt(prompt_id)
+                prompt_client = client.get_prompt(prompt_id, label=prompt_label)
             except NotFoundError:
                 ctx.set_error(MiddlewareError(
-                    message=f"Langfuse prompt {prompt_id} not found",
+                    message=f"Langfuse prompt '{prompt_id}' not found with label '{prompt_label}'",
                     request_id=ctx.request_id,
                     middleware_name="langfuse_prompt",
                 ))

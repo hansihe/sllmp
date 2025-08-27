@@ -173,6 +173,7 @@ class RequestContext:
     client_metadata: Dict[str, Any] = field(default_factory=dict)  # From OpenAI metadata + headers
 
     # Shared state between middleware
+    provider_keys: Dict[str, str] = field(default_factory=dict)
     state: Dict[str, Any] = field(default_factory=dict)      # Inter-middleware communication
     metadata: Dict[str, Any] = field(default_factory=dict)   # Pipeline execution metadata
     errors: List[Exception] = field(default_factory=list)    # Accumulated errors

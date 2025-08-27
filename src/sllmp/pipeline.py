@@ -5,7 +5,7 @@ This module provides the foundation for a composable middleware pipeline
 that can handle both streaming and non-streaming LLM requests.
 """
 
-from typing import Any, AsyncGenerator, cast
+from typing import Any, AsyncGenerator, Dict, cast
 
 import any_llm
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
@@ -18,7 +18,7 @@ from .error import (
     RateLimitError, ContentPolicyError, ModelNotFoundError, NetworkError,
     ServiceUnavailableError, InternalError
 )
-from .context import Pipeline, RequestContext, NCompletionParams, PipelineState
+from .context import RequestContext, NCompletionParams, PipelineState
 
 async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletionChunk, None]:
     # Setup stage
@@ -197,6 +197,18 @@ def _create_error_chunk(error: PipelineError, ctx: RequestContext) -> dict:
         "error": error.to_dict()["error"]  # Include error details
     }
 
+def _resolve_meta_kws(ctx: RequestContext) -> Dict[str, Any]:
+    args = {}
+
+    model_id_parts = ctx.request.model_id.split(":")
+    if len(model_id_parts) == 2:
+        provider = model_id_parts[0]
+        provider_key = ctx.provider_keys.get(provider, None)
+        if provider_key is not None:
+            args["api_key"] = provider_key
+
+    return args
+
 async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[ChatCompletionChunk, None]:
     await ctx.pipeline.llm_call.execute_pre(ctx)
     try:
@@ -205,6 +217,7 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
             model=ctx.request.model_id,
             messages=ctx.request.messages, # type: ignore
             stream=True,
+            **_resolve_meta_kws(ctx),
             **{k: v for k, v in ctx.request.model_dump().items()
             if k not in ['model_id', 'messages', 'metadata', 'stream', 'prompt_id', 'prompt_variables']}
         )
@@ -234,6 +247,7 @@ async def _execute_llm_call(ctx: RequestContext):
         completion = await any_llm.acompletion(
             model=ctx.request.model_id,
             messages=ctx.request.messages, # type: ignore
+            **_resolve_meta_kws(ctx),
             **{k: v for k, v in ctx.request.model_dump().items()
             if k not in ['model_id', 'messages', 'metadata', 'prompt_id', 'prompt_variables']} # type: ignore
         )

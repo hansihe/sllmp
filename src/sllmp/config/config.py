@@ -16,19 +16,19 @@ class ConfigurationError(Exception):
     """Configuration validation or loading error."""
     pass
 
-class GuardrailConfig(BaseModel):
-    """Content safety and guardrail configuration."""
-    content_safety: Literal["disabled", "basic", "strict", "permissive"] = "basic"
-    pii_detection: bool = False
-    response_validation: bool = False
-    max_tokens: Optional[int] = None
-
-    @field_validator('max_tokens')
-    @classmethod
-    def validate_max_tokens(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("max_tokens must be positive")
-        return v
+# class GuardrailConfig(BaseModel):
+#     """Content safety and guardrail configuration."""
+#     content_safety: Literal["disabled", "basic", "strict", "permissive"] = "basic"
+#     pii_detection: bool = False
+#     response_validation: bool = False
+#     max_tokens: Optional[int] = None
+#
+#     @field_validator('max_tokens')
+#     @classmethod
+#     def validate_max_tokens(cls, v):
+#         if v is not None and v <= 0:
+#             raise ValueError("max_tokens must be positive")
+#         return v
 
 
 class LangfuseConfig(BaseModel):
@@ -37,18 +37,13 @@ class LangfuseConfig(BaseModel):
     secret_key: str = Field(..., description="Langfuse secret key (can use ${VAR} syntax)")
     base_url: str = Field(default="https://cloud.langfuse.com", description="Langfuse base URL")
     enabled: bool = Field(default=True, description="Whether Langfuse is enabled")
+    default_prompt_label: str = Field(default="latest", description="When using Langfuse prompt management, this label will be fetched by default. Can be specified by env variable.")
 
-    @field_validator('public_key', 'secret_key')
+    @field_validator('public_key', 'secret_key', 'default_prompt_label')
     @classmethod
     def resolve_env_vars(cls, v):
         """Resolve environment variables in configuration values."""
-        if isinstance(v, str) and v.startswith('${') and v.endswith('}'):
-            var_name = v[2:-1]
-            env_value = os.getenv(var_name)
-            if env_value is None:
-                raise ValueError(f"Environment variable not found: {var_name}")
-            return env_value
-        return v
+        return _resolve_env_vars(v)
 
     @field_validator('secret_key')
     @classmethod
@@ -60,90 +55,71 @@ class LangfuseConfig(BaseModel):
 
 class DefaultsConfig(BaseModel):
     """Global default configuration applied to all features."""
-    provider: str = Field(default="openai", description="Default LLM provider")
-    model: str = Field(default="openai:gpt-5", description="Default model")
-    openai_api_key: Optional[str] = Field(default=None, description="Global OpenAI API key")
-    anthropic_api_key: Optional[str] = Field(default=None, description="Global Anthropic API key")
-    daily_budget: float = Field(default=100.0, gt=0, description="Default daily budget in USD")
-    requests_per_minute: int = Field(default=60, gt=0, description="Default rate limit")
+    model: Optional[str] = Field(default=None, description="Override provider:model for this feature")
+    provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
 
     # Observability defaults
     langfuse: Optional[LangfuseConfig] = Field(default=None, description="Default Langfuse config")
 
-    # Guardrail defaults
-    guardrails: GuardrailConfig = Field(default_factory=GuardrailConfig, description="Default guardrail config")
+    # # Guardrail defaults
+    # guardrails: GuardrailConfig = Field(default_factory=GuardrailConfig, description="Default guardrail config")
 
-    @field_validator('openai_api_key', 'anthropic_api_key')
+    @field_validator('provider_api_keys')
     @classmethod
-    def resolve_env_vars(cls, v):
+    def resolve_env_vars(cls, kv):
         """Resolve environment variables in API keys."""
-        if v and isinstance(v, str) and v.startswith('${') and v.endswith('}'):
-            var_name = v[2:-1]
-            env_value = os.getenv(var_name)
-            if env_value is None:
-                raise ValueError(f"Environment variable not found: {var_name}")
-            return env_value
-        return v
+        return _resolve_env_vars(kv)
 
 
 class FeatureConfig(BaseModel):
     """Feature-specific configuration with optional overrides."""
-    description: str = Field(..., description="Human-readable feature description")
-    owner_contacts: List[str] = Field(..., min_length=1, description="Contact emails for feature owners")
+    description: str = Field("", description="Human-readable feature description")
+    owner: str = Field("", description="Owner information")
 
     # Provider and model overrides
-    provider: Optional[str] = Field(default=None, description="Override provider for this feature")
-    model: Optional[str] = Field(default=None, description="Override model for this feature")
-    openai_api_key: Optional[str] = Field(default=None, description="Feature-specific OpenAI key")
-    anthropic_api_key: Optional[str] = Field(default=None, description="Feature-specific Anthropic key")
+    model: Optional[str] = Field(default=None, description="Override provider:model for this feature")
+    provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
 
     # Advanced budget constraints
-    budget_constraints: List[Dict[str, Any]] = Field(default_factory=list, description="Multi-dimensional budget constraints")
+    budget_constraints: List[Constraint] = Field(default_factory=list, description="Multi-dimensional budget constraints")
 
     # Observability overrides
     langfuse: Optional[LangfuseConfig] = Field(default=None, description="Feature-specific Langfuse config")
 
-    # Guardrail overrides
-    guardrails: Optional[GuardrailConfig] = Field(default=None, description="Feature-specific guardrail config")
+    # # Guardrail overrides
+    # guardrails: Optional[GuardrailConfig] = Field(default=None, description="Feature-specific guardrail config")
 
     # Custom configuration
     custom: Dict[str, Any] = Field(default_factory=dict, description="Feature-specific custom config")
 
-    @field_validator('openai_api_key', 'anthropic_api_key')
+    @field_validator('provider_api_keys')
     @classmethod
-    def resolve_env_vars(cls, v):
+    def resolve_env_vars(cls, kv):
         """Resolve environment variables in API keys."""
-        if v and isinstance(v, str) and v.startswith('${') and v.endswith('}'):
-            var_name = v[2:-1]
-            env_value = os.getenv(var_name)
-            if env_value is None:
-                raise ValueError(f"Environment variable not found: {var_name}")
-            return env_value
-        return v
+        return _resolve_env_vars(kv)
 
-    @field_validator('owner_contacts')
-    @classmethod
-    def validate_owner_contacts(cls, v):
-        """Validate that owner contacts are valid email formats."""
-        import re
-        email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+class ResolvedFeatureConfig(BaseModel):
+    """Fully resolved feature configuration with all defaults applied."""
+    # Core feature metadata
+    feature_name: str = Field(..., description="Name of the feature")
+    feature_description: str = Field("", description="Human-readable feature description")
+    owner: str = Field("", description="Owner information")
 
-        for contact in v:
-            if not email_pattern.match(contact):
-                raise ValueError(f"Invalid email format: {contact}")
-        return v
+    # Provider and model configuration (resolved)
+    model: Optional[str] = Field(None, description="Resolved provider:model")
+    provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
 
-    @field_validator('budget_constraints')
-    @classmethod
-    def validate_budget_constraints(cls, v):
-        """Validate budget constraint format."""
-        validated_constraints = []
+    # Budget and rate limiting
+    budget_constraints: List[Constraint] = Field(default_factory=list, description="Multi-dimensional budget constraints")
 
-        for constraint_data in v:
-            constraint = validate_constraint(constraint_data)
-            validated_constraints.append(constraint)
+    # Observability configuration
+    langfuse: Optional[LangfuseConfig] = Field(default=None, description="Resolved Langfuse config")
 
-        return validated_constraints
+    # # Guardrail configuration
+    # guardrails: GuardrailConfig = Field(..., description="Resolved guardrail config")
+
+    # Custom configuration
+    custom: Dict[str, Any] = Field(default_factory=dict, description="Feature-specific custom config")
 
 
 class ConfigFile(BaseModel):
@@ -189,7 +165,7 @@ class ConfigResolver:
         """
         self.config_file = config_file
         self.config = self._load_and_validate(config_file)
-        self._resolved_cache: Dict[str, Dict[str, Any]] = {}
+        self._resolved_cache: Dict[str, ResolvedFeatureConfig] = {}
 
     def _load_and_validate(self, config_file: str) -> ConfigFile:
         """Load and validate configuration file."""
@@ -219,7 +195,7 @@ class ConfigResolver:
         """Check if a feature is configured."""
         return feature_name in self.config.features
 
-    def resolve_feature_config(self, feature_name: str) -> Dict[str, Any]:
+    def resolve_feature_config(self, feature_name: str) -> ResolvedFeatureConfig:
         """
         Resolve complete configuration for a feature with inheritance.
 
@@ -227,7 +203,7 @@ class ConfigResolver:
             feature_name: Name of the feature to resolve configuration for
 
         Returns:
-            Resolved configuration dictionary with all defaults applied
+            Resolved configuration as a validated ResolvedFeatureConfig object
 
         Raises:
             ConfigurationError: If feature doesn't exist
@@ -239,11 +215,14 @@ class ConfigResolver:
         if not self.feature_exists(feature_name):
             raise ConfigurationError(f"Unknown feature: {feature_name}")
 
-        resolved = self._merge_configurations(
+        resolved_dict = self._merge_configurations(
             self.config.defaults,
             self.config.features[feature_name],
             feature_name
         )
+
+        # Convert to typed ResolvedFeatureConfig
+        resolved = ResolvedFeatureConfig(**resolved_dict)
 
         # Cache and return
         self._resolved_cache[feature_name] = resolved
@@ -262,15 +241,19 @@ class ConfigResolver:
         # Override with feature-specific values (only if not None)
         feature_dict = feature.model_dump()
         for key, value in feature_dict.items():
-            if value is not None and key not in ['description', 'owner_contacts']:
-                if key == 'guardrails' and value:
-                    # Merge guardrail configs (feature overrides specific fields)
-                    resolved_guardrails = resolved.get('guardrails', {})
-                    if resolved_guardrails:
-                        resolved_guardrails.update(value)
-                        resolved['guardrails'] = resolved_guardrails
-                    else:
-                        resolved['guardrails'] = value
+            if value is not None and key not in ['description', 'owner']:
+                if key == "provider_api_keys" and value:
+                    resolved_api_keys = resolved.get('provider_api_keys', {})
+                    resolved_api_keys.update(value)
+                    resolved['provider_api_keys'] = resolved_api_keys
+                # if key == 'guardrails' and value:
+                #     # Merge guardrail configs (feature overrides specific fields)
+                #     resolved_guardrails = resolved.get('guardrails', {})
+                #     if resolved_guardrails:
+                #         resolved_guardrails.update(value)
+                #         resolved['guardrails'] = resolved_guardrails
+                #     else:
+                #         resolved['guardrails'] = value
                 else:
                     # Direct override for other fields
                     resolved[key] = value
@@ -278,7 +261,7 @@ class ConfigResolver:
         # Add metadata
         resolved['feature_name'] = feature_name
         resolved['feature_description'] = feature.description
-        resolved['feature_owners'] = feature.owner_contacts
+        resolved['owner'] = feature.owner
 
         return resolved
 
@@ -293,21 +276,16 @@ class ConfigResolver:
             List of validated Constraint objects
         """
         config = self.resolve_feature_config(feature_name)
-        constraint_data = config.get('budget_constraints', [])
+        return config.budget_constraints
 
-        # Constraints are already validated by Pydantic during config loading
-        return constraint_data if isinstance(constraint_data, list) else []
-
-    def get_langfuse_config(self, feature_name: str) -> Optional[Dict[str, Any]]:
+    def get_langfuse_config(self, feature_name: str) -> Optional[LangfuseConfig]:
         """Get Langfuse configuration for a feature."""
         config = self.resolve_feature_config(feature_name)
-        langfuse_config = config.get('langfuse')
 
-        if not langfuse_config or not langfuse_config.get('enabled', True):
+        if not config.langfuse or not config.langfuse.enabled:
             return None
 
-        # Return the config as-is since it's already validated by Pydantic
-        return langfuse_config
+        return config.langfuse
 
 
 
@@ -324,34 +302,28 @@ class ConfigResolver:
         for feature_name, feature in self.config.features.items():
             resolved = self.resolve_feature_config(feature_name)
 
-            # Check for required API keys
-            provider = resolved.get('provider', 'openai')
-            api_key_field = f"{provider}_api_key"
+            # # Check for required API keys
+            # provider = resolved.provider
+            # api_key = getattr(resolved, f"{provider}_api_key", None)
 
-            if not resolved.get(api_key_field):
-                warnings.append(f"Feature '{feature_name}' using provider '{provider}' but no API key configured")
+            # if not api_key:
+            #     warnings.append(f"Feature '{feature_name}' using provider '{provider}' but no API key configured")
 
             # Check for Langfuse config
-            langfuse_config = resolved.get('langfuse', {})
-            if langfuse_config.get('enabled', True) and not langfuse_config.get('secret_key'):
+            if resolved.langfuse and resolved.langfuse.enabled and not resolved.langfuse.secret_key:
                 warnings.append(f"Feature '{feature_name}' has Langfuse enabled but no secret key configured")
 
         return warnings
 
-def validate_constraint(constraint_data: dict) -> Constraint:
-    """
-    Validate constraint data using Pydantic parsing.
-
-    Args:
-        constraint_data: Dictionary containing constraint configuration
-
-    Returns:
-        Validated Constraint object
-
-    Raises:
-        ValueError: If constraint data is invalid
-    """
-    try:
-        return Constraint.model_validate(constraint_data)
-    except Exception as e:
-        raise ValueError(f"Invalid budget constraint: {e}")
+def _resolve_env_vars(v: Any) -> Any:
+    if isinstance(v, str) and v.startswith('${') and v.endswith('}'):
+        var_name = v[2:-1]
+        env_value = os.getenv(var_name)
+        if env_value is None:
+            raise ValueError(f"Environment variable not found: {var_name}")
+        return env_value
+    if isinstance(v, dict):
+        for key, val in v.items():
+            v[key] = _resolve_env_vars(val)
+        return v
+    return v
