@@ -12,6 +12,7 @@ from ... import logger
 from ...pricing import calculate_usage_pricing
 
 from dataclasses import dataclass, field
+from pydantic import BaseModel, field_validator, Field, ConfigDict
 import time
 
 @dataclass(frozen=True)
@@ -33,54 +34,82 @@ class LimitError(PipelineError):
             "limit": self.limit_value
         }
 
-@dataclass
-class BudgetLimit:
-    limit: float                  # Budget limit in USD
-    window: str                   # Time window (1h, 1d, 7d, 30d)
+class BudgetLimit(BaseModel):
+    """Budget limit configuration with validation."""
+    limit: float = Field(..., gt=0, description="Budget limit in USD")
+    window: str = Field(..., description="Time window (1h, 1d, 7d, 30d)")
 
-    def __post_init__(self) -> None:
-        if self.limit <= 0:
-            raise ValueError("Budget limit must be positive")
-
+    @field_validator('window')
+    @classmethod
+    def validate_window(cls, v):
         valid_windows = ["1h", "1d", "7d", "30d"]
-        if self.window not in valid_windows:
-            raise ValueError(f"Invalid window: {self.window}. Must be one of {valid_windows}")
+        if v not in valid_windows:
+            raise ValueError(f"Invalid window: {v}. Must be one of {valid_windows}")
+        return v
 
-@dataclass
-class RateLimit:
-    per_minute: int
+class RateLimit(BaseModel):
+    """Rate limit configuration with validation."""
+    per_minute: int = Field(..., gt=0, description="Rate limit per minute")
 
-    def __post_init__(self) -> None:
-        if self.per_minute <= 0:
-            raise ValueError("Rate limit must be positive")
-
-@dataclass
-class Constraint:
+class Constraint(BaseModel):
     """
     Budget constraint specification.
 
     Defines a multi-dimensional budget constraint that can combine
     different dimensions like feature, user_id, organization, etc.
     """
-    name: str                           # Human-readable constraint name
-    dimensions: List[str]               # Constraint dimensions (feature, user_id, etc.)
-    budget_limit: Optional[BudgetLimit]
-    rate_limit: Optional[RateLimit]
-    description: str                    # Human-readable description
+    name: str = Field(..., description="Human-readable constraint name")
+    dimensions: List[str] = Field(..., description="Constraint dimensions (feature, user_id, etc.)")
+    budget_limit: Optional[BudgetLimit] = Field(None, description="Budget limit configuration")
+    rate_limit: Optional[RateLimit] = Field(None, description="Rate limit configuration")
+    description: Optional[str] = Field(..., description="Human-readable description")
 
-    def __post_init__(self) -> None:
-        """Validate constraint after creation."""
-
+    @field_validator('dimensions')
+    @classmethod
+    def validate_dimensions(cls, v):
+        """Validate that dimensions are valid and unique."""
         valid_dimensions = ["feature", "user_id", "organization", "team"]
-        invalid_dims = [d for d in self.dimensions if d not in valid_dimensions]
-        if invalid_dims:
-            raise ValueError(f"Invalid dimensions: {invalid_dims}. Must be from {valid_dimensions}")
 
-        if len(self.dimensions) != len(set(self.dimensions)):
+        # Check for invalid dimensions (allow meta: prefixed ones)
+        invalid_dims = []
+        for dim in v:
+            if not dim.startswith("meta:") and dim not in valid_dimensions:
+                invalid_dims.append(dim)
+
+        if invalid_dims:
+            raise ValueError(f"Invalid dimensions: {invalid_dims}. Must be from {valid_dimensions} or start with 'meta:'")
+
+        if len(v) != len(set(v)):
             raise ValueError("Duplicate dimensions not allowed")
 
-        if self.budget_limit is None and self.rate_limit is None:
+        return v
+
+    @field_validator('rate_limit')
+    @classmethod
+    def validate_limits(cls, v, info):
+        """Validate that at least one limit is specified."""
+        budget_limit = info.data.get('budget_limit')
+        if budget_limit is None and v is None:
             raise ValueError("Either budget or rate limit must be specified")
+        return v
+
+    model_config = ConfigDict(
+        # Generate schema with examples
+        json_schema_extra={
+            "example": {
+                "name": "per-user-daily-limit",
+                "dimensions": ["user_id"],
+                "budget_limit": {
+                    "limit": 10.0,
+                    "window": "1d"
+                },
+                "rate_limit": {
+                    "per_minute": 60
+                },
+                "description": "Daily budget limit per user"
+            }
+        }
+    )
 
 
 class BaseLimitBackend(Protocol):

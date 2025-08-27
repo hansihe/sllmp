@@ -46,4 +46,4 @@ def calculate_usage_pricing(model_id: str, usage: CompletionUsage):
     prompt_cost += remaining_completion_tokens * pricing.output
 
     # Full result
-    return prompt_cost + completion_cost
+    return (prompt_cost + completion_cost) / 1e6

@@ -18,7 +18,7 @@ from .error import (
     RateLimitError, ContentPolicyError, ModelNotFoundError, NetworkError,
     ServiceUnavailableError, InternalError
 )
-from .context import RequestContext, NCompletionParams, PipelineState
+from .context import Pipeline, RequestContext, NCompletionParams, PipelineState
 
 async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletionChunk, None]:
     # Setup stage
@@ -79,7 +79,7 @@ async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletion
 
 def _handle_signal_errors(ctx: RequestContext, result: SignalExecutionResult[None]):
     """Handle errors from signal execution."""
-    if result.exceptions:
+    if not result.success:
         # Convert signal execution errors to middleware errors
         for error in result.exceptions:
             middleware_error = MiddlewareError(
@@ -90,6 +90,8 @@ def _handle_signal_errors(ctx: RequestContext, result: SignalExecutionResult[Non
             ctx.set_error(middleware_error)
             ctx.next_pipeline_state = PipelineState.ERROR
             break  # Stop on first error
+
+        raise RuntimeError(f"error not propagated! {result}")
 
 
 def _extract_provider_from_model(model_id: str) -> str:
@@ -204,7 +206,7 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
             messages=ctx.request.messages, # type: ignore
             stream=True,
             **{k: v for k, v in ctx.request.model_dump().items()
-            if k not in ['model_id', 'messages', 'metadata', 'stream']}
+            if k not in ['model_id', 'messages', 'metadata', 'stream', 'prompt_id', 'prompt_variables']}
         )
         completion_stream = cast(AsyncIterator[ChatCompletionChunk], completion_stream)
 
@@ -233,7 +235,7 @@ async def _execute_llm_call(ctx: RequestContext):
             model=ctx.request.model_id,
             messages=ctx.request.messages, # type: ignore
             **{k: v for k, v in ctx.request.model_dump().items()
-            if k not in ['model_id', 'messages', 'metadata']} # type: ignore
+            if k not in ['model_id', 'messages', 'metadata', 'prompt_id', 'prompt_variables']} # type: ignore
         )
         completion = cast(ChatCompletion, completion)
         ctx.set_response(completion)

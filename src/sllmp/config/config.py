@@ -9,8 +9,8 @@ with defaults inheritance.
 import os
 import yaml
 from typing import Dict, List, Any, Optional, Literal
-from pydantic import BaseModel, Field, validator
-from ..middleware.limit import BudgetLimit, RateLimit, Constraint
+from pydantic import BaseModel, Field, field_validator
+from ..middleware.limit import Constraint
 
 class ConfigurationError(Exception):
     """Configuration validation or loading error."""
@@ -23,7 +23,8 @@ class GuardrailConfig(BaseModel):
     response_validation: bool = False
     max_tokens: Optional[int] = None
 
-    @validator('max_tokens')
+    @field_validator('max_tokens')
+    @classmethod
     def validate_max_tokens(cls, v):
         if v is not None and v <= 0:
             raise ValueError("max_tokens must be positive")
@@ -32,12 +33,25 @@ class GuardrailConfig(BaseModel):
 
 class LangfuseConfig(BaseModel):
     """Langfuse observability configuration."""
-    project: str = Field(..., description="Langfuse project name")
+    public_key: str = Field(..., description="Langfuse public key (can use ${VAR} syntax)")
     secret_key: str = Field(..., description="Langfuse secret key (can use ${VAR} syntax)")
     base_url: str = Field(default="https://cloud.langfuse.com", description="Langfuse base URL")
     enabled: bool = Field(default=True, description="Whether Langfuse is enabled")
 
-    @validator('secret_key')
+    @field_validator('public_key', 'secret_key')
+    @classmethod
+    def resolve_env_vars(cls, v):
+        """Resolve environment variables in configuration values."""
+        if isinstance(v, str) and v.startswith('${') and v.endswith('}'):
+            var_name = v[2:-1]
+            env_value = os.getenv(var_name)
+            if env_value is None:
+                raise ValueError(f"Environment variable not found: {var_name}")
+            return env_value
+        return v
+
+    @field_validator('secret_key')
+    @classmethod
     def validate_secret_key(cls, v):
         if not v or v.strip() == "":
             raise ValueError("secret_key cannot be empty")
@@ -47,7 +61,7 @@ class LangfuseConfig(BaseModel):
 class DefaultsConfig(BaseModel):
     """Global default configuration applied to all features."""
     provider: str = Field(default="openai", description="Default LLM provider")
-    model: str = Field(default="gpt-3.5-turbo", description="Default model")
+    model: str = Field(default="openai:gpt-5", description="Default model")
     openai_api_key: Optional[str] = Field(default=None, description="Global OpenAI API key")
     anthropic_api_key: Optional[str] = Field(default=None, description="Global Anthropic API key")
     daily_budget: float = Field(default=100.0, gt=0, description="Default daily budget in USD")
@@ -58,6 +72,18 @@ class DefaultsConfig(BaseModel):
 
     # Guardrail defaults
     guardrails: GuardrailConfig = Field(default_factory=GuardrailConfig, description="Default guardrail config")
+
+    @field_validator('openai_api_key', 'anthropic_api_key')
+    @classmethod
+    def resolve_env_vars(cls, v):
+        """Resolve environment variables in API keys."""
+        if v and isinstance(v, str) and v.startswith('${') and v.endswith('}'):
+            var_name = v[2:-1]
+            env_value = os.getenv(var_name)
+            if env_value is None:
+                raise ValueError(f"Environment variable not found: {var_name}")
+            return env_value
+        return v
 
 
 class FeatureConfig(BaseModel):
@@ -71,10 +97,6 @@ class FeatureConfig(BaseModel):
     openai_api_key: Optional[str] = Field(default=None, description="Feature-specific OpenAI key")
     anthropic_api_key: Optional[str] = Field(default=None, description="Feature-specific Anthropic key")
 
-    # Budget overrides
-    daily_budget: Optional[float] = Field(default=None, gt=0, description="Override daily budget")
-    requests_per_minute: Optional[int] = Field(default=None, gt=0, description="Override rate limit")
-
     # Advanced budget constraints
     budget_constraints: List[Dict[str, Any]] = Field(default_factory=list, description="Multi-dimensional budget constraints")
 
@@ -87,7 +109,20 @@ class FeatureConfig(BaseModel):
     # Custom configuration
     custom: Dict[str, Any] = Field(default_factory=dict, description="Feature-specific custom config")
 
-    @validator('owner_contacts')
+    @field_validator('openai_api_key', 'anthropic_api_key')
+    @classmethod
+    def resolve_env_vars(cls, v):
+        """Resolve environment variables in API keys."""
+        if v and isinstance(v, str) and v.startswith('${') and v.endswith('}'):
+            var_name = v[2:-1]
+            env_value = os.getenv(var_name)
+            if env_value is None:
+                raise ValueError(f"Environment variable not found: {var_name}")
+            return env_value
+        return v
+
+    @field_validator('owner_contacts')
+    @classmethod
     def validate_owner_contacts(cls, v):
         """Validate that owner contacts are valid email formats."""
         import re
@@ -98,7 +133,8 @@ class FeatureConfig(BaseModel):
                 raise ValueError(f"Invalid email format: {contact}")
         return v
 
-    @validator('budget_constraints')
+    @field_validator('budget_constraints')
+    @classmethod
     def validate_budget_constraints(cls, v):
         """Validate budget constraint format."""
         validated_constraints = []
@@ -115,7 +151,8 @@ class ConfigFile(BaseModel):
     defaults: DefaultsConfig = Field(..., description="Global default configuration")
     features: Dict[str, FeatureConfig] = Field(..., description="Feature-specific configurations")
 
-    @validator('features')
+    @field_validator('features')
+    @classmethod
     def validate_features(cls, v):
         """Validate feature configurations."""
         if not v:
@@ -164,10 +201,7 @@ class ConfigResolver:
             if not raw_config:
                 raise ConfigurationError("Configuration file is empty")
 
-            # Substitute environment variables
-            raw_config = self._substitute_env_vars(raw_config)
-
-            # Validate with Pydantic
+            # Validate with Pydantic (env var substitution now handled by field validators)
             return ConfigFile(**raw_config)
 
         except FileNotFoundError:
@@ -205,27 +239,40 @@ class ConfigResolver:
         if not self.feature_exists(feature_name):
             raise ConfigurationError(f"Unknown feature: {feature_name}")
 
-        # Get configurations
-        defaults = self.config.defaults
-        feature = self.config.features[feature_name]
+        resolved = self._merge_configurations(
+            self.config.defaults,
+            self.config.features[feature_name],
+            feature_name
+        )
 
+        # Cache and return
+        self._resolved_cache[feature_name] = resolved
+        return resolved
+
+    def _merge_configurations(self, defaults: DefaultsConfig, feature: FeatureConfig, feature_name: str) -> Dict[str, Any]:
+        """
+        Merge default and feature configurations with proper inheritance rules.
+
+        This method handles the complex logic of merging configurations while
+        respecting None values and nested object merging.
+        """
         # Start with defaults as base
-        resolved = defaults.dict()
+        resolved = defaults.model_dump()
 
         # Override with feature-specific values (only if not None)
-        feature_dict = feature.dict()
+        feature_dict = feature.model_dump()
         for key, value in feature_dict.items():
             if value is not None and key not in ['description', 'owner_contacts']:
-                # Handle nested configs specially
-                if key == 'guardrails' and isinstance(value, dict):
-                    # Merge guardrail configs
+                if key == 'guardrails' and value:
+                    # Merge guardrail configs (feature overrides specific fields)
                     resolved_guardrails = resolved.get('guardrails', {})
-                    resolved_guardrails.update(value)
-                    resolved['guardrails'] = resolved_guardrails
-                elif key == 'langfuse' and isinstance(value, dict):
-                    # Override langfuse config completely
-                    resolved['langfuse'] = value
+                    if resolved_guardrails:
+                        resolved_guardrails.update(value)
+                        resolved['guardrails'] = resolved_guardrails
+                    else:
+                        resolved['guardrails'] = value
                 else:
+                    # Direct override for other fields
                     resolved[key] = value
 
         # Add metadata
@@ -233,8 +280,6 @@ class ConfigResolver:
         resolved['feature_description'] = feature.description
         resolved['feature_owners'] = feature.owner_contacts
 
-        # Cache and return
-        self._resolved_cache[feature_name] = resolved
         return resolved
 
     def get_limit_constraints(self, feature_name: str) -> List[Constraint]:
@@ -248,14 +293,10 @@ class ConfigResolver:
             List of validated Constraint objects
         """
         config = self.resolve_feature_config(feature_name)
-        constraint_data = config.get('limit_constraints', [])
+        constraint_data = config.get('budget_constraints', [])
 
-        constraints = []
-        for data in constraint_data:
-            constraint = validate_constraint(data)
-            constraints.append(constraint)
-
-        return constraints
+        # Constraints are already validated by Pydantic during config loading
+        return constraint_data if isinstance(constraint_data, list) else []
 
     def get_langfuse_config(self, feature_name: str) -> Optional[Dict[str, Any]]:
         """Get Langfuse configuration for a feature."""
@@ -265,32 +306,10 @@ class ConfigResolver:
         if not langfuse_config or not langfuse_config.get('enabled', True):
             return None
 
-        return {
-            'project': langfuse_config['project'],
-            'public_key': langfuse_config['public_key'],
-            'secret_key': langfuse_config['secret_key'],
-            'base_url': langfuse_config.get('base_url', 'https://cloud.langfuse.com'),
-            'enabled': langfuse_config.get('enabled', True)
-        }
+        # Return the config as-is since it's already validated by Pydantic
+        return langfuse_config
 
-    def _substitute_env_vars(self, obj: Any) -> Any:
-        """
-        Recursively substitute environment variables in configuration.
 
-        Supports ${VAR_NAME} syntax for environment variable substitution.
-        """
-        if isinstance(obj, dict):
-            return {k: self._substitute_env_vars(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._substitute_env_vars(item) for item in obj]
-        elif isinstance(obj, str) and obj.startswith('${') and obj.endswith('}'):
-            var_name = obj[2:-1]
-            env_value = os.getenv(var_name)
-            if env_value is None:
-                raise ConfigurationError(f"Environment variable not found: {var_name}")
-            return env_value
-        else:
-            return obj
 
     def validate_configuration(self) -> List[str]:
         """
@@ -319,28 +338,20 @@ class ConfigResolver:
 
         return warnings
 
-def validate_constraint(constraint_data: dict):
+def validate_constraint(constraint_data: dict) -> Constraint:
+    """
+    Validate constraint data using Pydantic parsing.
+
+    Args:
+        constraint_data: Dictionary containing constraint configuration
+
+    Returns:
+        Validated Constraint object
+
+    Raises:
+        ValueError: If constraint data is invalid
+    """
     try:
-        budget_limit = constraint_data.get('budget_limit', None)
-        if budget_limit != None:
-            budget_limit = BudgetLimit(
-                limit=budget_limit.get('limit', 0),
-                window=budget_limit.get('window', ''),
-            )
-
-        rate_limit = constraint_data.get('rate_limit', None)
-        if rate_limit != None:
-            rate_limit = RateLimit(
-                per_minute=rate_limit['per_minute']
-            )
-
-        # Convert dict to BudgetConstraint for validation
-        return Constraint(
-            name=constraint_data.get('name', ''),
-            dimensions=constraint_data.get('dimensions', []),
-            budget_limit=budget_limit,
-            rate_limit=rate_limit,
-            description=constraint_data.get('description', '')
-        )
-    except (TypeError, ValueError) as e:
+        return Constraint.model_validate(constraint_data)
+    except Exception as e:
         raise ValueError(f"Invalid budget constraint: {e}")

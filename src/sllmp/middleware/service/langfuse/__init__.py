@@ -5,18 +5,22 @@ except ImportError:
 else:
     _has_langfuse = True
 
-from ....pipeline import RequestContext
+from langfuse.api import NotFoundError
+from typing import Dict, Optional, cast
 
-from typing import Dict, Tuple, Optional, cast
+from sllmp.error import MiddlewareError
+from sllmp.pipeline import RequestContext
+
+from any_llm.types.completion import ChatCompletionMessage
 
 if _has_langfuse:
     import langfuse.model
 
     from .util import process_output, extract_chat_prompt
 
-    LANGFUSE_CLIENTS: Dict[Tuple[str, str], langfuse.Langfuse] = {}
+    LANGFUSE_CLIENTS: Dict[str, langfuse.Langfuse] = {}
 
-    def langfuse_middleware(project: str, public_key: str, secret_key: str, base_url: str = "https://cloud.langfuse.com"):
+    def langfuse_middleware(public_key: str, secret_key: str, base_url: str = "https://cloud.langfuse.com"):
         def setup(ctx: RequestContext):
             """
             Configures the Langfuse for the request.
@@ -24,14 +28,14 @@ if _has_langfuse:
             Supports prompt management and observability.
             """
 
-            client = LANGFUSE_CLIENTS.get((project, public_key), None)
+            client = LANGFUSE_CLIENTS.get(public_key, None)
             if client is None:
                 client = langfuse.Langfuse(
                     secret_key=secret_key,
                     public_key=public_key,
                     host=base_url
                 )
-                LANGFUSE_CLIENTS[(project, public_key)] = client
+                LANGFUSE_CLIENTS[public_key] = client
 
             ctx.state['langfuse'] = {
                 'client': client
@@ -53,13 +57,26 @@ if _has_langfuse:
             langfuse_state = ctx.state['langfuse']
             client = cast(langfuse.Langfuse, langfuse_state['client'])
 
-            prompt_client = client.get_prompt(prompt_id)
+            try:
+                prompt_client = client.get_prompt(prompt_id)
+            except NotFoundError:
+                ctx.set_error(MiddlewareError(
+                    message=f"Langfuse prompt {prompt_id} not found",
+                    request_id=ctx.request_id,
+                    middleware_name="langfuse_prompt",
+                ))
+                return
+
             prompt = prompt_client.compile(**prompt_variables)
 
-            ctx.request.messages.insert(0, {
-                "role": "system",
-                "content": prompt
-            })
+            if isinstance(prompt, str):
+                ctx.request.messages.insert(0, {
+                    "role": "system",
+                    "content": prompt
+                })
+            else:
+                prompt.extend(ctx.request.messages)
+                ctx.request.messages = prompt
 
             langfuse_state["used_prompt_client"] = prompt_client
 

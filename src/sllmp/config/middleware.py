@@ -11,7 +11,7 @@ approach while keeping the same generic middleware components.
 
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
-from sllmp.util.signal import HaltExecution
+from sllmp.error import ValidationError
 
 from .. import logger
 from ..pipeline import RequestContext
@@ -60,7 +60,12 @@ def configuration_middleware(
             # Step 1: Feature detection
             feature_name = _detect_feature(ctx, config_resolver)
             if not feature_name:
-                raise HaltExecution("Unable to determine feature from request")
+                ctx.set_error(ValidationError(
+                    "Unable to determine feature from request",
+                    request_id=ctx.request_id,
+                    status_code=400,
+                ))
+                return
                 # self.halt_with_message(ctx, "Unable to determine feature from request")
                 # return ctx
 
@@ -86,13 +91,12 @@ def configuration_middleware(
             ctx.metadata['config_applied'] = True
 
         except ConfigurationError as e:
-            raise HaltExecution(f"Configuration error: {e}")
-            # self.halt_with_message(ctx, f"Configuration error: {e}")
-        except Exception as e:
-            raise HaltExecution(f"Unexpected configuration error: {e}")
-            # self.halt_with_message(ctx, f"Unexpected configuration error: {e}")
-
-        return ctx
+            ctx.set_error(ValidationError(
+                f"Configuration error: {e}",
+                request_id=ctx.request_id,
+                status_code=400,
+            ))
+            return
 
     return setup
 
@@ -174,7 +178,6 @@ async def _extend_pipeline_for_feature(
         from ..middleware.service.langfuse import langfuse_middleware
 
         ctx.add_middleware(langfuse_middleware(
-            project=langfuse_config['project'],
             public_key=langfuse_config['public_key'],
             secret_key=langfuse_config['secret_key'],
             base_url=langfuse_config['base_url']

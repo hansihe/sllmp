@@ -1,22 +1,16 @@
 """Core server abstraction for sllmp."""
 
-from typing import Callable, Optional, List
+from typing import Callable, Optional, List, Any
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.middleware import Middleware
 
-from ..context import Pipeline
-from ..middleware import (
-    logging_middleware,
-    observability_middleware,
-    retry_middleware,
-)
+from ..pipeline import RequestContext
 from .handlers import (
     chat_completions_handler,
     models_handler,
     health_handler,
 )
-
 
 class SimpleProxyServer:
     """
@@ -26,7 +20,7 @@ class SimpleProxyServer:
     for library users to customize the pipeline and add middleware.
     """
 
-    def __init__(self, pipeline_factory: Optional[Callable[[], Pipeline]] = None):
+    def __init__(self, pipeline_factory: Callable[[RequestContext], None]):
         """
         Initialize the server with an optional pipeline factory.
 
@@ -34,55 +28,7 @@ class SimpleProxyServer:
             pipeline_factory: Function that returns a configured Pipeline.
                              If None, uses the default pipeline.
         """
-        self.pipeline_factory = pipeline_factory or self._create_default_pipeline_factory()
-        self.pipeline = self.pipeline_factory()
-
-    def _create_default_pipeline_factory(self) -> Callable[[], Pipeline]:
-        """Create a factory for the default pipeline configuration."""
-        def factory():
-            return self._create_default_pipeline()
-        return factory
-
-    def _create_default_pipeline(self) -> Pipeline:
-        """
-        Create a simple default middleware pipeline for basic functionality.
-
-        Currently includes:
-        - Basic logging middleware
-        - Observability middleware
-        - Retry middleware for transient errors
-        """
-        pipeline = Pipeline()
-
-        # Add retry middleware first (so it can handle errors from other middleware)
-        pipeline.setup.connect(retry_middleware(
-            max_attempts=3,
-            base_delay=1.0,
-            max_delay=60.0,
-            log_retries=True
-        ))
-
-        # Add logging middleware - connects to pipeline signals
-        pipeline.setup.connect(logging_middleware(
-            log_requests=True,
-            log_responses=True
-        ))
-
-        # Add observability middleware
-        pipeline.setup.connect(observability_middleware(
-            emit_metrics=True
-        ))
-
-        return pipeline
-
-    def add_middleware(self, middleware_func: Callable):
-        """
-        Add middleware to the pipeline.
-
-        Args:
-            middleware_func: Middleware function to add to the pipeline
-        """
-        self.pipeline.setup.connect(middleware_func)
+        self.pipeline_factory = pipeline_factory
 
     def create_asgi_app(self, debug: bool = True, middleware: Optional[List[Middleware]] = None) -> Starlette:
         """
@@ -111,7 +57,7 @@ class SimpleProxyServer:
     def _create_chat_completions_handler(self):
         """Create the chat completions handler with this server's pipeline."""
         async def handler(request):
-            return await chat_completions_handler(request, self.pipeline)
+            return await chat_completions_handler(request, self.pipeline_factory)
         return handler
 
     def add_route(self, app: Starlette, path: str, handler: Callable, methods: Optional[List[str]] = None):

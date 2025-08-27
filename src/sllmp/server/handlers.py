@@ -12,7 +12,7 @@ from ..error import AuthenticationError, RateLimitError, InternalError, Validati
 from ..middleware import create_validation_middleware
 
 
-async def chat_completions_handler(request: Request, pipeline):
+async def chat_completions_handler(request: Request, add_middleware):
     """
     OpenAI-compatible chat completions endpoint with pipeline processing.
 
@@ -91,6 +91,8 @@ async def chat_completions_handler(request: Request, pipeline):
         validation_middleware = create_validation_middleware()
         validation_middleware(ctx)
 
+        add_middleware(ctx)
+
         if ctx.is_streaming:
             # Handle streaming requests through pipeline
             async def stream_generator():
@@ -161,8 +163,11 @@ async def chat_completions_handler(request: Request, pipeline):
 
                 return JSONResponse(error_dict, status_code=status_code)
 
-            # Return successful response
-            return JSONResponse(ctx.response or {"error": {"message": "No response generated"}})
+            if ctx.response is None:
+                return JSONResponse({"error": {"message": "No response generated"}})
+            else:
+                # Return successful response
+                return JSONResponse(ctx.response.model_dump())
 
     except Exception as e:
         # Handle unexpected errors
