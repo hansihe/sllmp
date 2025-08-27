@@ -105,7 +105,8 @@ class TestRetryMiddleware:
 
         # Simulate authentication error
         auth_error = AuthenticationError("Invalid API key", mock_context.request_id)
-        mock_context.set_error(auth_error)
+        mock_context.error = auth_error
+        mock_context.response = None
 
         # Trigger error signal
         await mock_context.pipeline.error.emit(mock_context)
@@ -123,7 +124,8 @@ class TestRetryMiddleware:
 
         # Simulate network error
         network_error = NetworkError("Connection timeout", mock_context.request_id, "openai")
-        mock_context.set_error(network_error)
+        mock_context.error = network_error
+        mock_context.response = None
 
         # Trigger error signal
         await mock_context.pipeline.error.emit(mock_context)
@@ -143,7 +145,8 @@ class TestRetryMiddleware:
         # Simulate retries until exhaustion
         for attempt in range(3):  # One more than max_attempts
             service_error = ServiceUnavailableError("Service down", mock_context.request_id, "openai")
-            mock_context.set_error(service_error)
+            mock_context.error = service_error
+            mock_context.response = None
 
             await mock_context.pipeline.error.emit(mock_context)
 
@@ -175,7 +178,8 @@ class TestRetryMiddleware:
         with patch('asyncio.sleep', side_effect=mock_sleep):
             for attempt in range(2):  # Two retries
                 rate_limit_error = RateLimitError("Rate limited", mock_context.request_id, "openai")
-                mock_context.set_error(rate_limit_error)
+                mock_context.error = rate_limit_error
+                mock_context.response = None
 
                 await mock_context.pipeline.error.emit(mock_context)
 
@@ -203,7 +207,8 @@ class TestRetryMiddleware:
                 "openai",
                 retry_after=5  # 5 seconds
             )
-            mock_context.set_error(rate_limit_error)
+            mock_context.error = rate_limit_error
+            mock_context.response = None
 
             await mock_context.pipeline.error.emit(mock_context)
 
@@ -230,7 +235,8 @@ class TestRetryMiddleware:
         with patch('asyncio.sleep', side_effect=mock_sleep):
             for attempt in range(5):
                 network_error = NetworkError("Connection failed", mock_context.request_id, "openai")
-                mock_context.set_error(network_error)
+                mock_context.error = network_error
+                mock_context.response = None
 
                 await mock_context.pipeline.error.emit(mock_context)
 
@@ -251,7 +257,8 @@ class TestRetryMiddleware:
 
         # Network error should not be retried with custom set
         network_error = NetworkError("Connection failed", mock_context.request_id, "openai")
-        mock_context.set_error(network_error)
+        mock_context.error = network_error
+        mock_context.response = None
 
         await mock_context.pipeline.error.emit(mock_context)
 
@@ -262,8 +269,9 @@ class TestRetryMiddleware:
 
         # Rate limit error should be retried
         mock_context.error = None  # Clear error
+        mock_context.response = None
         rate_limit_error = RateLimitError("Rate limited", mock_context.request_id, "openai")
-        mock_context.set_error(rate_limit_error)
+        mock_context.error = rate_limit_error
 
         await mock_context.pipeline.error.emit(mock_context)
 
@@ -287,7 +295,8 @@ class TestRetryIntegration:
 
         for i, message in enumerate(error_messages):
             service_error = ServiceUnavailableError(message, mock_context.request_id, "openai")
-            mock_context.set_error(service_error)
+            mock_context.error = service_error
+            mock_context.response = None
 
             await mock_context.pipeline.error.emit(mock_context)
 
@@ -309,7 +318,8 @@ class TestRetryIntegration:
         # Don't apply retry middleware
 
         network_error = NetworkError("Connection failed", mock_context.request_id, "openai")
-        mock_context.set_error(network_error)
+        mock_context.error = network_error
+        mock_context.response = None
 
         # Trigger error signal (should be no-op)
         await mock_context.pipeline.error.emit(mock_context)

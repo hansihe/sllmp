@@ -47,12 +47,18 @@ async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletion
                 next_state = ctx.next_pipeline_state or PipelineState.LLM_CALL
                 assert next_state in [PipelineState.LLM_CALL, PipelineState.POST, PipelineState.ERROR, PipelineState.COMPLETE]
             case PipelineState.LLM_CALL:
-                if ctx.is_streaming:
-                    async for item in _execute_llm_call_streaming(ctx):
-                        if isinstance(item, ChatCompletionChunk):
-                            yield item
-                else:
-                    await _execute_llm_call(ctx)
+                try:
+                    if ctx.is_streaming:
+                        async for item in _execute_llm_call_streaming(ctx):
+                            if isinstance(item, ChatCompletionChunk):
+                                yield item
+                    else:
+                        await _execute_llm_call(ctx)
+                except PipelineError as e:
+                    # Handle pipeline errors from LLM execution
+                    ctx.error = e
+                    ctx.response = None
+                    ctx.next_pipeline_state = PipelineState.ERROR
 
                 if ctx.has_error:
                     next_state = ctx.next_pipeline_state or PipelineState.ERROR
@@ -84,7 +90,7 @@ def _handle_signal_errors(ctx: RequestContext, result: SignalExecutionResult[Non
         for error in result.exceptions:
             if isinstance(error, PipelineError):
                 # Preserve existing PipelineErrors
-                ctx.set_error(error)
+                ctx.error = error
             else:
                 # Wrap other exceptions in MiddlewareError
                 middleware_error = MiddlewareError(
@@ -92,7 +98,10 @@ def _handle_signal_errors(ctx: RequestContext, result: SignalExecutionResult[Non
                     request_id=ctx.request_id,
                     middleware_name="unknown"  # Could be enhanced to track specific middleware
                 )
-                ctx.set_error(middleware_error)
+                ctx.error = middleware_error
+            
+            # Clear any response and transition to error state
+            ctx.response = None
             ctx.next_pipeline_state = PipelineState.ERROR
             break  # Stop on first error
         
@@ -240,14 +249,13 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
             yield chunk
 
     except Exception as e:
-        # Classify and set pipeline error
+        # Classify and set pipeline error in context for streaming
         provider = _extract_provider_from_model(ctx.request.model_id)
         pipeline_error = classify_llm_error(e, ctx.request_id, provider)
-        ctx.set_error(pipeline_error)
-        # Transition to error state
+        ctx.error = pipeline_error
+        ctx.response = None
         ctx.next_pipeline_state = PipelineState.ERROR
-        # For streaming, just set the error and let the pipeline handle it
-        # The final RequestContext with the error will be yielded by the main pipeline
+        # For streaming, don't raise - let the pipeline continue to yield final context
     finally:
         await ctx.pipeline.llm_call.execute_post(ctx)
 
@@ -264,12 +272,10 @@ async def _execute_llm_call(ctx: RequestContext):
         completion = cast(ChatCompletion, completion)
         ctx.set_response(completion)
     except Exception as e:
-        # Classify and set pipeline error
+        # Classify and raise pipeline error - this will be caught by signal handler
         provider = _extract_provider_from_model(ctx.request.model_id)
         pipeline_error = classify_llm_error(e, ctx.request_id, provider)
-        ctx.set_error(pipeline_error)
-        # Transition to error state
-        ctx.next_pipeline_state = PipelineState.ERROR
+        raise pipeline_error
     finally:
         await ctx.pipeline.llm_call.execute_post(ctx)
 

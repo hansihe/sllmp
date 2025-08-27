@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 # Error type definitions
-@dataclass(frozen=True)
+@dataclass
 class PipelineError(Exception, ABC):
     """Base class for all pipeline errors."""
     message: str
@@ -30,7 +30,7 @@ class PipelineError(Exception, ABC):
         return self.message
 
 
-@dataclass(frozen=True)
+@dataclass
 class MiddlewareError(PipelineError):
     """Error that occurred in middleware execution."""
     middleware_name: str
@@ -40,13 +40,13 @@ class MiddlewareError(PipelineError):
         return {"middleware": self.middleware_name}
 
 
-@dataclass(frozen=True)
+@dataclass
 class StreamError(PipelineError):
     """Error that occurred during streaming."""
     error_type: str = field(default="stream_error", init=False)
 
 
-@dataclass(frozen=True)
+@dataclass
 class ValidationError(PipelineError):
     """Error due to invalid request parameters."""
     field_name: Optional[str] = None
@@ -57,19 +57,19 @@ class ValidationError(PipelineError):
         return {"field": self.field_name} if self.field_name else {}
 
 
-@dataclass(frozen=True)
+@dataclass
 class AuthenticationError(PipelineError):
     """Error due to authentication failure."""
     error_type: str = field(default="authentication_error", init=False)
 
 
-@dataclass(frozen=True)
+@dataclass
 class InternalError(PipelineError):
     """Internal system error."""
     error_type: str = field(default="internal_error", init=False)
 
 
-@dataclass(frozen=True)
+@dataclass
 class LLMProviderError(PipelineError):
     """Base class for LLM provider errors."""
     provider: str
@@ -83,7 +83,7 @@ class LLMProviderError(PipelineError):
         return base
 
 
-@dataclass(frozen=True)
+@dataclass
 class RateLimitError(LLMProviderError):
     """Rate limit exceeded by LLM provider."""
     retry_after: Optional[int] = None  # Seconds to wait before retry
@@ -96,13 +96,13 @@ class RateLimitError(LLMProviderError):
         return base
 
 
-@dataclass(frozen=True)
+@dataclass
 class ContentPolicyError(LLMProviderError):
     """Content blocked by provider policy."""
     error_type: str = field(default="content_policy_error", init=False)
 
 
-@dataclass(frozen=True)
+@dataclass
 class ModelNotFoundError(LLMProviderError):
     """Requested model not available."""
     model_id: str = field(default="unknown")
@@ -114,13 +114,13 @@ class ModelNotFoundError(LLMProviderError):
         return base
 
 
-@dataclass(frozen=True)
+@dataclass
 class NetworkError(LLMProviderError):
     """Network connectivity error."""
     error_type: str = field(default="network_error", init=False)
 
 
-@dataclass(frozen=True)
+@dataclass
 class ServiceUnavailableError(LLMProviderError):
     """LLM provider service temporarily unavailable."""
     error_type: str = field(default="service_unavailable_error", init=False)

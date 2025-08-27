@@ -251,11 +251,10 @@ class TestPipelineErrorHandling:
         """Test validation error prevents LLM call and sets error state."""
         def failing_validation_middleware(ctx: RequestContext):
             async def validate(ctx: RequestContext):
-                ctx.set_error(ValidationError(
+                raise ValidationError(
                     "Invalid request format",
                     request_id=ctx.request_id
-                ))
-                ctx.next_pipeline_state = PipelineState.ERROR
+                )
 
             ctx.pipeline.pre.connect(validate)
 

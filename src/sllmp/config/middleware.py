@@ -58,12 +58,11 @@ def configuration_middleware(
             # Step 1: Feature detection
             feature_name = _detect_feature(ctx, config_resolver)
             if not feature_name:
-                ctx.set_error(ValidationError(
+                raise ValidationError(
                     "Unable to determine feature from request",
                     request_id=ctx.request_id,
                     status_code=400,
-                ))
-                return
+                )
                 # self.halt_with_message(ctx, "Unable to determine feature from request")
                 # return ctx
 
@@ -89,12 +88,11 @@ def configuration_middleware(
             ctx.metadata['config_applied'] = True
 
         except ConfigurationError as e:
-            ctx.set_error(ValidationError(
+            raise ValidationError(
                 f"Configuration error: {e}",
                 request_id=ctx.request_id,
                 status_code=400,
-            ))
-            return
+            )
 
     return setup
 

@@ -110,13 +110,12 @@ async def custom_pipeline_client(mock_llm_completion):
             async def check_rate_limit(ctx: RequestContext):
                 user_id = ctx.client_metadata.get("user_id", "anonymous")
                 if user_id == "rate_limited_user":
-                    ctx.set_error(RateLimitError(
+                    raise RateLimitError(
                         "Rate limit exceeded",
                         request_id=ctx.request_id,
                         provider="test",
                         retry_after=60
-                    ))
-                    return
+                    )
 
             ctx.pipeline.pre.connect(check_rate_limit)
 
@@ -125,11 +124,10 @@ async def custom_pipeline_client(mock_llm_completion):
                 if ctx.request.messages:
                     last_message = ctx.request.messages[-1]
                     if isinstance(last_message, dict) and "blocked" in last_message.get("content", "").lower():
-                        ctx.set_error(ValidationError(
+                        raise ValidationError(
                             "Content blocked by policy",
                             request_id=ctx.request_id
-                        ))
-                        return
+                        )
 
             ctx.pipeline.pre.connect(filter_content)
 

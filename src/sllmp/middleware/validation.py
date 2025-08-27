@@ -23,13 +23,11 @@ async def _validate_request(ctx: RequestContext) -> None:
         
         # Check if model is specified
         if not ctx.request.model_id:
-            ctx.set_error(ValidationError(
+            raise ValidationError(
                 "Missing required field: model",
                 request_id=ctx.request_id,
                 status_code=422
-            ))
-            ctx.next_pipeline_state = PipelineState.ERROR
-            return
+            )
         
         # Validate messages structure
         if not hasattr(ctx.request, 'messages') or ctx.request.messages is None:
@@ -39,31 +37,25 @@ async def _validate_request(ctx: RequestContext) -> None:
         # Validate each message structure
         for i, message in enumerate(ctx.request.messages):
             if not isinstance(message, dict):
-                ctx.set_error(ValidationError(
+                raise ValidationError(
                     f"Message at index {i} must be an object",
                     request_id=ctx.request_id,
                     status_code=422
-                ))
-                ctx.next_pipeline_state = PipelineState.ERROR
-                return
+                )
             
             if 'role' not in message:
-                ctx.set_error(ValidationError(
+                raise ValidationError(
                     f"Message at index {i} missing required field: role",
                     request_id=ctx.request_id,
                     status_code=422
-                ))
-                ctx.next_pipeline_state = PipelineState.ERROR
-                return
+                )
             
             if 'content' not in message:
-                ctx.set_error(ValidationError(
+                raise ValidationError(
                     f"Message at index {i} missing required field: content",
                     request_id=ctx.request_id,
                     status_code=422
-                ))
-                ctx.next_pipeline_state = PipelineState.ERROR
-                return
+                )
         
         # Validate numeric parameters
         numeric_params = {
@@ -81,33 +73,31 @@ async def _validate_request(ctx: RequestContext) -> None:
                 try:
                     float_val = float(value)
                     if not (min_val <= float_val <= max_val):
-                        ctx.set_error(ValidationError(
+                        raise ValidationError(
                             f"Parameter '{param}' must be between {min_val} and {max_val}",
                             request_id=ctx.request_id,
                             status_code=422
-                        ))
-                        ctx.next_pipeline_state = PipelineState.ERROR
-                        return
+                        )
                 except (ValueError, TypeError):
-                    ctx.set_error(ValidationError(
+                    raise ValidationError(
                         f"Parameter '{param}' must be a number",
                         request_id=ctx.request_id,
                         status_code=422
-                    ))
-                    ctx.next_pipeline_state = PipelineState.ERROR
-                    return
+                    )
         
         # If we get here, validation passed
         # Continue with normal pipeline flow
         
+    except ValidationError:
+        # Re-raise ValidationErrors as-is
+        raise
     except Exception as e:
-        # Catch any unexpected validation errors
-        ctx.set_error(ValidationError(
+        # Wrap any unexpected validation errors
+        raise ValidationError(
             f"Request validation failed: {str(e)}",
             request_id=ctx.request_id,
             status_code=422
-        ))
-        ctx.next_pipeline_state = ctx.pipeline_state.ERROR
+        )
 
 
 def create_validation_middleware(**kwargs):

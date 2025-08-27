@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, field_validator, Field, ConfigDict
 import time
 
-@dataclass(frozen=True)
+@dataclass
 class LimitError(PipelineError):
     """Error due to budget or rate limit exceeded."""
     limit_type: str  # "budget_limit_exceeded" or "rate_limit_exceeded"
@@ -232,8 +232,7 @@ def limit_enforcement_middleware(
                                 current_usage=f"${current_usage:.4f}",
                                 limit_value=f"${constraint.budget_limit.limit:.4f}"
                             )
-                            ctx.set_error(budget_error)
-                            return
+                            raise budget_error
                     except Exception:
                         # If we can't check usage, err on the side of caution and allow
                         logger.exception("Unable to check budget usage, allowing request")
@@ -254,8 +253,7 @@ def limit_enforcement_middleware(
                         current_usage=f"{current_rate_usage} requests/minute",
                         limit_value=f"{constraint.rate_limit.per_minute} requests/minute"
                     )
-                    ctx.set_error(rate_error)
-                    return
+                    raise rate_error
 
         # Store estimated cost for later use
         ctx.state['limit_estimated_cost'] = _estimate_request_cost(ctx)

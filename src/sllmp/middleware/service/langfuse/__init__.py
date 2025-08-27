@@ -66,12 +66,11 @@ if _has_langfuse:
             try:
                 prompt_client = client.get_prompt(prompt_id, label=prompt_label)
             except NotFoundError:
-                ctx.set_error(MiddlewareError(
+                raise MiddlewareError(
                     message=f"Langfuse prompt '{prompt_id}' not found with label '{prompt_label}'",
                     request_id=ctx.request_id,
                     middleware_name="langfuse_prompt",
-                ))
-                return
+                )
 
             prompt = prompt_client.compile(**prompt_variables)
 
