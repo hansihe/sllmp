@@ -218,5 +218,4 @@ class RequestContext:
         self.response = None
 
         # Automatically transition to error state when error is set
-        if self.next_pipeline_state is None:
-            self.next_pipeline_state = PipelineState.ERROR
+        self.next_pipeline_state = PipelineState.ERROR

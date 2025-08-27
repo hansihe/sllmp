@@ -10,12 +10,13 @@ from sllmp import SimpleProxyServer
 def mock_llm_completion():
     """Mock any_llm.acompletion to avoid needing real API keys."""
     def create_mock_completion(model="openai:gpt-3.5-turbo", content="Hello! This is a test response.", **kwargs):
-        return {
-            "id": "chatcmpl-test123",
-            "object": "chat.completion",
-            "created": 1234567890,
-            "model": model,  # Use the model from the request
-            "choices": [
+        from any_llm.types.completion import ChatCompletion
+        return ChatCompletion(
+            id="chatcmpl-test123",
+            object="chat.completion",
+            created=1234567890,
+            model=model,  # Use the model from the request
+            choices=[
                 {
                     "index": 0,
                     "message": {
@@ -25,12 +26,12 @@ def mock_llm_completion():
                     "finish_reason": "stop"
                 }
             ],
-            "usage": {
+            usage={
                 "prompt_tokens": 10,
                 "completion_tokens": 20,
                 "total_tokens": 30
             }
-        }
+        )
 
     def create_mock_stream(model="openai:gpt-3.5-turbo", **kwargs):
         """Create mock streaming response chunks."""
@@ -111,7 +112,11 @@ def mock_llm_completion():
 @pytest.fixture
 async def client():
     # Create a server with default configuration
-    server = SimpleProxyServer()
+    def create_basic_pipeline():
+        from sllmp.context import Pipeline
+        return Pipeline()  # Basic pipeline without middleware
+    
+    server = SimpleProxyServer(pipeline_factory=create_basic_pipeline)
     app = server.create_asgi_app(debug=True)
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
@@ -219,12 +224,13 @@ class TestChatCompletions:
     async def test_multimodal_chat_completion(self, client, multimodal_request, mock_llm_completion):
         # Override the mock to return multimodal-specific content
         def create_multimodal_response(**kwargs):
-            return {
-                "id": "chatcmpl-test123",
-                "object": "chat.completion",
-                "created": 1234567890,
-                "model": kwargs.get("model", "openai:gpt-4-vision-preview"),
-                "choices": [{
+            from any_llm.types.completion import ChatCompletion
+            return ChatCompletion(
+                id="chatcmpl-test123",
+                object="chat.completion",
+                created=1234567890,
+                model=kwargs.get("model", "openai:gpt-4-vision-preview"),
+                choices=[{
                     "index": 0,
                     "message": {
                         "role": "assistant",
@@ -232,8 +238,8 @@ class TestChatCompletions:
                     },
                     "finish_reason": "stop"
                 }],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-            }
+                usage={"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+            )
 
         mock_llm_completion.side_effect = lambda stream=False, **kwargs: (
             create_multimodal_response(**kwargs)
@@ -392,7 +398,7 @@ class TestErrorHandling:
         assert ("must be an object" in data["error"]["message"] or
                 "should be a valid dictionary" in data["error"]["message"])
 
-    async def test_invalid_temperature(self, client):
+    async def test_invalid_temperature(self, client, mock_llm_completion):
         request_data = {
             "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Hello"}],

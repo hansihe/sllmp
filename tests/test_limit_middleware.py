@@ -53,11 +53,13 @@ class TestBudgetLimit:
         assert limit.window == "1d"
 
     def test_negative_limit_raises_error(self):
-        with pytest.raises(ValueError, match="Budget limit must be positive"):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="Input should be greater than 0"):
             BudgetLimit(limit=-1.0, window="1d")
 
     def test_zero_limit_raises_error(self):
-        with pytest.raises(ValueError, match="Budget limit must be positive"):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="Input should be greater than 0"):
             BudgetLimit(limit=0.0, window="1d")
 
     def test_invalid_window_raises_error(self):
@@ -73,11 +75,13 @@ class TestRateLimit:
         assert limit.per_minute == 100
 
     def test_negative_rate_raises_error(self):
-        with pytest.raises(ValueError, match="Rate limit must be positive"):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="Input should be greater than 0"):
             RateLimit(per_minute=-1)
 
     def test_zero_rate_raises_error(self):
-        with pytest.raises(ValueError, match="Rate limit must be positive"):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="Input should be greater than 0"):
             RateLimit(per_minute=0)
 
 

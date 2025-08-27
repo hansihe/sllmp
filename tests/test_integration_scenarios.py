@@ -23,17 +23,14 @@ from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 def mock_llm_completion():
     """Mock any_llm.acompletion for integration tests."""
     def create_completion(**kwargs):
-        # Return a dictionary that can be serialized, not a ChatCompletion object
-        # Debug: print what model_id we're receiving
-        # print(f"DEBUG: create_completion received kwargs: {kwargs}")
-        # The kwargs contain 'model' not 'model_id' based on debug output
+        # Return a ChatCompletion object, not a dictionary
         model_id = kwargs.get("model", kwargs.get("model_id", "openai:gpt-3.5-turbo"))
-        return {
-            "id": "chatcmpl-integration",
-            "object": "chat.completion",
-            "created": 1234567890,
-            "model": model_id,  # This will reflect the actual requested model_id
-            "choices": [{
+        return ChatCompletion(
+            id="chatcmpl-integration",
+            object="chat.completion",
+            created=1234567890,
+            model=model_id,  # This will reflect the actual requested model_id
+            choices=[{
                 "index": 0,
                 "message": {
                     "role": "assistant",
@@ -41,8 +38,8 @@ def mock_llm_completion():
                 },
                 "finish_reason": "stop"
             }],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-        }
+            usage={"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+        )
 
     async def create_stream(**kwargs):
         chunks = [
@@ -91,7 +88,11 @@ def mock_llm_completion():
 @pytest.fixture
 async def basic_client(mock_llm_completion):
     """HTTP client for basic server without custom middleware."""
-    server = SimpleProxyServer()
+    def create_basic_pipeline():
+        from sllmp.context import Pipeline
+        return Pipeline()  # Basic pipeline without middleware
+    
+    server = SimpleProxyServer(pipeline_factory=create_basic_pipeline)
     app = server.create_asgi_app(debug=True)
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
@@ -266,7 +267,7 @@ class TestMiddlewareIntegration:
         # Rate limited user should be blocked
         limited_request = {
             "model": "openai:gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": "Should be blocked"}],
+            "messages": [{"role": "user", "content": "Normal message"}],
             "metadata": {"user_id": "rate_limited_user"}
         }
 

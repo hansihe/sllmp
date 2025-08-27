@@ -80,18 +80,28 @@ async def execute_pipeline(ctx: RequestContext) -> AsyncGenerator[ChatCompletion
 def _handle_signal_errors(ctx: RequestContext, result: SignalExecutionResult[None]):
     """Handle errors from signal execution."""
     if not result.success:
-        # Convert signal execution errors to middleware errors
+        # Handle signal execution errors - preserve PipelineErrors, wrap others
         for error in result.exceptions:
-            middleware_error = MiddlewareError(
-                message=f"Middleware execution error: {str(error)}",
-                request_id=ctx.request_id,
-                middleware_name="unknown"  # Could be enhanced to track specific middleware
-            )
-            ctx.set_error(middleware_error)
+            if isinstance(error, PipelineError):
+                # Preserve existing PipelineErrors
+                ctx.set_error(error)
+            else:
+                # Wrap other exceptions in MiddlewareError
+                middleware_error = MiddlewareError(
+                    message=f"Middleware execution error: {str(error)}",
+                    request_id=ctx.request_id,
+                    middleware_name="unknown"  # Could be enhanced to track specific middleware
+                )
+                ctx.set_error(middleware_error)
             ctx.next_pipeline_state = PipelineState.ERROR
             break  # Stop on first error
-
-        raise RuntimeError(f"error not propagated! {result}")
+        
+        # Return to allow pipeline to continue to ERROR state
+        return
+    
+    # Sanity check: This should never happen with simplified signal logic
+    if result.exceptions:
+        raise RuntimeError(f"Inconsistent signal state - has exceptions but success=True: {result}")
 
 
 def _extract_provider_from_model(model_id: str) -> str:

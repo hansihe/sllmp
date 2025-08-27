@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 # Error type definitions
 @dataclass(frozen=True)
-class PipelineError(ABC):
+class PipelineError(Exception, ABC):
     """Base class for all pipeline errors."""
     message: str
     request_id: str
@@ -24,6 +24,10 @@ class PipelineError(ABC):
     def _extra_fields(self) -> Dict[str, Any]:
         """Override in subclasses to add additional fields."""
         return {}
+
+    def __str__(self) -> str:
+        """Return the error message."""
+        return self.message
 
 
 @dataclass(frozen=True)

@@ -15,9 +15,9 @@ from sllmp.context import Pipeline, RequestContext, PipelineState, NCompletionPa
 from sllmp.pipeline import create_request_context, execute_pipeline
 from sllmp.error import (
     ValidationError, PipelineError, RateLimitError,
-    LLMProviderError, NetworkError, InternalError
+    LLMProviderError, NetworkError, InternalError, MiddlewareError
 )
-from sllmp.util.signal import Signal, HaltExecution
+from sllmp.util.signal import Signal
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 
 
@@ -64,34 +64,36 @@ class TestSignalErrorHandling:
         assert len(result.exceptions) == 1
         assert isinstance(result.exceptions[0], ValueError)
 
-    async def test_signal_halt_execution(self):
-        """Test HaltExecution stops signal processing."""
+    async def test_signal_exception_continues_processing(self):
+        """Test that exceptions no longer halt signal processing."""
         signal = Signal()
         results = []
 
         async def good_callback():
             results.append("executed")
 
-        async def halting_callback():
-            results.append("before_halt")
-            raise HaltExecution("Stop processing")
+        async def failing_callback():
+            results.append("before_fail")
+            raise ValueError("Callback failed")
 
-        async def skipped_callback():
-            results.append("should_not_execute")
+        async def final_callback():
+            results.append("should_execute")
 
         signal.connect(good_callback)
-        signal.connect(halting_callback)
-        signal.connect(skipped_callback)
+        signal.connect(failing_callback)
+        signal.connect(final_callback)
 
         result = await signal.emit()
 
-        # Should halt after the halting callback
+        # All callbacks should execute despite the exception
         assert "executed" in results
-        assert "before_halt" in results
-        assert "should_not_execute" not in results
-        assert result.completed is False
-        assert result.callbacks_executed == 2
-        assert result.callbacks_skipped == 1
+        assert "before_fail" in results
+        assert "should_execute" in results
+        assert result.completed is True  # All callbacks executed
+        assert result.callbacks_executed == 3
+        assert result.callbacks_skipped == 0
+        assert len(result.exceptions) == 1
+        assert isinstance(result.exceptions[0], ValueError)
 
     async def test_signal_with_recursive_emission_error(self):
         """Test signal prevents recursive emission."""
@@ -140,9 +142,13 @@ class TestPipelineErrorRecovery:
         async for result in execute_pipeline(ctx):
             continue
 
-        # Should capture error and set error state
+        # Should capture error and complete pipeline execution
         assert ctx.has_error
-        assert ctx.pipeline_state == PipelineState.ERROR
+        assert ctx.pipeline_state == PipelineState.COMPLETE
+        
+        # Verify error is properly set
+        assert isinstance(ctx.error, MiddlewareError)
+        assert "Middleware failed" in str(ctx.error)
 
     async def test_error_in_streaming_chunk_processing(self, basic_params):
         """Test error handling during streaming chunk processing."""

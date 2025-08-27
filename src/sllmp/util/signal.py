@@ -14,9 +14,6 @@ class SignalState(Enum):
     OPEN = "open"
     CLOSED = "closed"
 
-class HaltExecution(Exception):
-    """Exception that can be raised by callbacks to halt signal execution."""
-    pass
 
 @dataclass
 class CallbackResult(Generic[T]):
@@ -134,10 +131,9 @@ class SignalExecutionResult(Generic[T]):
 
     @property
     def success(self) -> bool:
-        """True if execution completed without exceptions (excluding HaltExecution)."""
+        """True if execution completed without exceptions."""
         return self.completed and all(
-            result.success or isinstance(result.exception, HaltExecution)
-            for result in self.callback_results
+            result.success for result in self.callback_results
         )
 
     @property
@@ -150,10 +146,10 @@ class SignalExecutionResult(Generic[T]):
 
     @property
     def exceptions(self) -> List[Exception]:
-        """List of exceptions raised by callbacks (excluding HaltExecution)."""
+        """List of all exceptions raised by callbacks."""
         return [
             result.exception for result in self.callback_results
-            if result.exception and not isinstance(result.exception, HaltExecution)
+            if result.exception is not None
         ]
 
 class Signal(Generic[P, S]):
@@ -266,19 +262,6 @@ class Signal(Generic[P, S]):
                     callback_result.success = True
                     callback_result.return_value = return_value
                     result.callbacks_executed += 1
-
-                except HaltExecution as e:
-                    callback_result.exception = e
-                    callback_result.success = False
-                    result.halted_by = callback
-                    result.callbacks_executed += 1
-                    result.callback_results.append(callback_result)
-
-                    result.callbacks_skipped = len(all_callbacks) - callback_index - 1
-                    if self._pending_callbacks:
-                        result.callbacks_skipped += len(self._pending_callbacks)
-
-                    break
 
                 except Exception as e:
                     callback_result.exception = e

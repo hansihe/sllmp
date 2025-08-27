@@ -87,11 +87,20 @@ async def chat_completions_handler(request: Request, add_middleware):
 
         ctx = create_request_context(completion_params, **client_metadata)
 
-        # Setup validation middleware
+        # Handle both pipeline factory patterns:
+        # 1. Factory that returns Pipeline: pipeline_factory() -> Pipeline
+        # 2. Middleware setup function: middleware_setup(ctx) -> None
+        import inspect
+        if len(inspect.signature(add_middleware).parameters) == 0:
+            # Pattern 1: Factory returns Pipeline
+            ctx.pipeline = add_middleware()
+        else:
+            # Pattern 2: Function modifies context's pipeline
+            add_middleware(ctx)
+
+        # Setup validation middleware (after custom pipeline setup)
         validation_middleware = create_validation_middleware()
         validation_middleware(ctx)
-
-        add_middleware(ctx)
 
         if ctx.is_streaming:
             # Handle streaming requests through pipeline
