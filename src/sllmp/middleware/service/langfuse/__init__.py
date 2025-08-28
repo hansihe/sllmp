@@ -26,11 +26,10 @@ if _has_langfuse:
     import langfuse
     from langfuse import Langfuse
     from langfuse.model import PromptClient
-    from langfuse._client.attributes import LangfuseOtelSpanAttributes
-    from langfuse._client.environment_variables import (
-        LANGFUSE_RELEASE,
-        LANGFUSE_TRACING_ENVIRONMENT,
-    )
+    from langfuse import LangfuseOtelSpanAttributes
+    # Environment variable constants
+    LANGFUSE_RELEASE = "LANGFUSE_RELEASE"
+    LANGFUSE_TRACING_ENVIRONMENT = "LANGFUSE_ENVIRONMENT"
 
     from .util import process_output, extract_chat_prompt
 

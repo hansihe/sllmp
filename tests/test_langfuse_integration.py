@@ -130,11 +130,12 @@ class TestLangfuseMiddlewareSetup:
         middleware_setup(request_context)
         
         # Verify Langfuse client was created
-        mock_langfuse_module['langfuse'].Langfuse.assert_called_once_with(
-            secret_key="sk-test",
-            public_key="pk-test",
-            host="https://cloud.langfuse.com"
-        )
+        # Check that Langfuse was called with the expected parameters (ignoring tracer_provider)
+        call_args = mock_langfuse_module['langfuse'].Langfuse.call_args
+        assert call_args.kwargs['secret_key'] == "sk-test"
+        assert call_args.kwargs['public_key'] == "pk-test"
+        assert call_args.kwargs['host'] == "https://cloud.langfuse.com"
+        assert 'tracer_provider' in call_args.kwargs  # Verify tracer_provider is passed
         
         # Verify state was set
         assert 'langfuse' in request_context.state
@@ -156,11 +157,11 @@ class TestLangfuseMiddlewareSetup:
         middleware_setup(request_context)
         
         # Verify custom configuration
-        mock_langfuse_module['langfuse'].Langfuse.assert_called_once_with(
-            secret_key="sk-custom",
-            public_key="pk-custom",
-            host="https://custom.langfuse.com"
-        )
+        call_args = mock_langfuse_module['langfuse'].Langfuse.call_args
+        assert call_args.kwargs['secret_key'] == "sk-custom"
+        assert call_args.kwargs['public_key'] == "pk-custom"
+        assert call_args.kwargs['host'] == "https://custom.langfuse.com"
+        assert 'tracer_provider' in call_args.kwargs
         
         assert request_context.state['langfuse']['prompt_label'] == 'production'
 
@@ -345,10 +346,10 @@ class TestObservability:
         middleware_setup(request_context)
         
         # Verify root span was created
-        mock_langfuse_module['client'].start_span.assert_called_once_with(
-            name="chat-completion",
-            metadata=request_context.client_metadata
-        )
+        call_args = mock_langfuse_module['client'].start_span.call_args
+        assert call_args.kwargs['name'] == "chat-completion"
+        assert call_args.kwargs['metadata'] == request_context.client_metadata
+        assert 'input' in call_args.kwargs  # Verify input is passed
         
         # Verify span is stored in state
         assert 'root_span' in request_context.state['langfuse']
