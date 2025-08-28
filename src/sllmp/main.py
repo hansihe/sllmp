@@ -6,6 +6,8 @@ This demonstrates how to create a basic OpenAI-compatible proxy server
 with logging, retry, and observability middleware.
 """
 
+import logging
+
 from sllmp import SimpleProxyServer
 from sllmp.middleware import (
     logging_middleware,
@@ -40,11 +42,22 @@ def create_example_pipeline():
 
 def main():
     """Run the example server."""
+    # Configure logging for stdout output
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler()]
+    )
+    
+    # Configure sllmp library logging - this affects all sllmp.* loggers
+    sllmp_logger = logging.getLogger('sllmp')
+    sllmp_logger.setLevel(logging.INFO)
+    
     # Create server with custom pipeline
     server = SimpleProxyServer(pipeline_factory=create_example_pipeline)
 
-    # Create the ASGI app
-    app = server.create_asgi_app(debug=True)
+    # Create the ASGI app with tracing enabled
+    app = server.create_asgi_app(debug=True, enable_tracing=True)
 
     # Run the server
     import uvicorn

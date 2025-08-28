@@ -3,7 +3,10 @@
 __version__ = "0.1.0"
 
 import logging
+
+# Library root logger - only add NullHandler, let users configure level
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 # Core server and components
 from .server import SimpleProxyServer

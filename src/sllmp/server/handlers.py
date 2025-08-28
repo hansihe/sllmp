@@ -5,11 +5,14 @@ import time
 
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.requests import Request
+from opentelemetry import trace
 
 from ..pipeline import create_request_context, execute_pipeline
 from ..context import NCompletionParams, RequestContext
 from ..error import AuthenticationError, RateLimitError, InternalError, ValidationError
 from ..middleware import create_validation_middleware
+
+tracer = trace.get_tracer(__name__)
 
 
 async def chat_completions_handler(request: Request, add_middleware):
@@ -23,6 +26,7 @@ async def chat_completions_handler(request: Request, add_middleware):
         request: The incoming HTTP request
         pipeline: The configured middleware pipeline
     """
+    span = trace.get_current_span()
     try:
         try:
             body = await request.json()
@@ -87,6 +91,14 @@ async def chat_completions_handler(request: Request, add_middleware):
 
         ctx = create_request_context(completion_params, **client_metadata)
 
+        # Set span attributes for request tracking
+        span.set_attributes({
+            "sllmp.request_id": ctx.request_id,
+            "sllmp.model_id": ctx.request.model_id,
+            "sllmp.is_streaming": ctx.is_streaming,
+            "sllmp.messages_count": len(ctx.request.messages),
+        })
+
         # Handle both pipeline factory patterns:
         # 1. Factory that returns Pipeline: pipeline_factory() -> Pipeline
         # 2. Middleware setup function: middleware_setup(ctx) -> None
@@ -113,6 +125,12 @@ async def chat_completions_handler(request: Request, add_middleware):
                             error = item.error
                             assert error is not None
 
+                            # Set error status on span
+                            span.set_attribute("error", True)
+                            span.set_attribute("error.type", type(error).__name__)
+                            span.set_attribute("error.message", str(error))
+                            span.record_exception(error)
+
                             # Send error as SSE chunk and terminate
                             error_chunk = {
                                 "error": error.to_dict()["error"]
@@ -120,7 +138,10 @@ async def chat_completions_handler(request: Request, add_middleware):
                             yield f"data: {json.dumps(error_chunk)}\n\n"
                             yield "data: [DONE]\n\n"
                             return
-                        # If no error but final context, we're done
+                        # If no error but final context, we're done (success)
+                        span.set_attribute("success", True)
+                        if item.response:
+                            span.set_attribute("response.finish_reason", getattr(item.response, 'choices', [{}])[0].get('finish_reason', 'unknown'))
                         yield "data: [DONE]\n\n"
                         return
 
@@ -156,6 +177,12 @@ async def chat_completions_handler(request: Request, add_middleware):
                 error = ctx.error
                 assert error is not None
 
+                # Set error status on span
+                span.set_attribute("error", True)
+                span.set_attribute("error.type", type(error).__name__)
+                span.set_attribute("error.message", str(error))
+                span.record_exception(error)
+
                 # Return error response with appropriate status code
                 error_dict = error.to_dict()
                 status_code = 400  # Default to client error
@@ -170,16 +197,29 @@ async def chat_completions_handler(request: Request, add_middleware):
                 elif isinstance(error, InternalError):
                     status_code = 500
 
+                span.set_attribute("http.status_code", status_code)
                 return JSONResponse(error_dict, status_code=status_code)
 
             if ctx.response is None:
+                span.set_attribute("error", True)
+                span.set_attribute("error.message", "No response generated")
                 return JSONResponse({"error": {"message": "No response generated"}})
             else:
                 # Return successful response
+                span.set_attribute("success", True)
+                span.set_attribute("http.status_code", 200)
+                if hasattr(ctx.response, 'choices') and ctx.response.choices:
+                    span.set_attribute("response.finish_reason", ctx.response.choices[0].finish_reason)
                 return JSONResponse(ctx.response.model_dump())
 
     except Exception as e:
         # Handle unexpected errors
+        span.set_attribute("error", True)
+        span.set_attribute("error.type", type(e).__name__)
+        span.set_attribute("error.message", str(e))
+        span.set_attribute("http.status_code", 500)
+        span.record_exception(e)
+        
         error_response = {
             "error": {
                 "message": str(e),

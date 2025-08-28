@@ -5,11 +5,13 @@ This middleware enforces budget constraints using a simple check-before,
 increment-after pattern without reservations.
 """
 
+import logging
 from typing import List, Dict, Any, Protocol, Optional
 from ...context import RequestContext
 from ...error import PipelineError
-from ... import logger
 from ...pricing import calculate_usage_pricing
+
+logger = logging.getLogger(__name__)
 
 from dataclasses import dataclass, field
 from pydantic import BaseModel, field_validator, Field, ConfigDict

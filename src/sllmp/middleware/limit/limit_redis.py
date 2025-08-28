@@ -8,11 +8,13 @@ Provides a production-ready Redis backend that supports:
 - Proper expiration handling
 """
 
+import logging
 import time
 from typing import Optional
 
 from .limit import BaseLimitBackend
-from ... import logger
+
+logger = logging.getLogger(__name__)
 
 try:
     import redis.asyncio

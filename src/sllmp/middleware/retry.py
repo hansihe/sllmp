@@ -9,12 +9,13 @@ retry logic that works correctly with the state machine.
 """
 
 import asyncio
+import logging
 import time
 from typing import Optional, Set, Type
 from dataclasses import dataclass, field
 from typing import Dict, Any, List
 
-from .. import logger
+logger = logging.getLogger(__name__)
 from ..context import RequestContext, PipelineState
 from ..error import (
     PipelineError,

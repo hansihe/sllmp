@@ -9,12 +9,13 @@ Other organizations can replace this middleware with their own configuration
 approach while keeping the same generic middleware components.
 """
 
+import logging
 from typing import Optional, List, TYPE_CHECKING
-
-from sllmp import logger
 from sllmp.pipeline import RequestContext
 from sllmp.error import ValidationError
 from .config import ConfigResolver, ConfigurationError, ResolvedFeatureConfig
+
+logger = logging.getLogger(__name__)
 
 from sllmp.middleware.limit import limit_enforcement_middleware, BaseLimitBackend
 from sllmp.middleware.logging import logging_middleware
@@ -163,7 +164,7 @@ async def _extend_pipeline_for_feature(
     if limit_constraints:
         if limit_backend:
             ctx.add_middleware(limit_enforcement_middleware(
-                constraints=limit_constraints,
+                constraints=list(limit_constraints.values()),
                 backend=limit_backend
             ))
         else:

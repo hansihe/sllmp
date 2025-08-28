@@ -6,12 +6,15 @@ that can handle both streaming and non-streaming LLM requests.
 """
 
 from typing import Any, AsyncGenerator, Dict, cast
+import logging
 
 import any_llm
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 from typing import AsyncIterator
 
 from sllmp.util.signal import SignalExecutionResult
+
+logger = logging.getLogger(__name__)
 
 from .error import (
     PipelineError, MiddlewareError, AuthenticationError,
@@ -90,9 +93,21 @@ def _handle_signal_errors(ctx: RequestContext, result: SignalExecutionResult[Non
         for error in result.exceptions:
             if isinstance(error, PipelineError):
                 # Preserve existing PipelineErrors
+                logger.error(
+                    "Pipeline error in request %s: %s", 
+                    ctx.request_id, 
+                    str(error),
+                    exc_info=error
+                )
                 ctx.error = error
             else:
                 # Wrap other exceptions in MiddlewareError
+                logger.error(
+                    "Middleware execution error in request %s: %s",
+                    ctx.request_id,
+                    str(error),
+                    exc_info=error
+                )
                 middleware_error = MiddlewareError(
                     message=f"Middleware execution error: {str(error)}",
                     request_id=ctx.request_id,
@@ -252,6 +267,12 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
         # Classify and set pipeline error in context for streaming
         provider = _extract_provider_from_model(ctx.request.model_id)
         pipeline_error = classify_llm_error(e, ctx.request_id, provider)
+        logger.error(
+            "LLM call error in streaming request %s: %s", 
+            ctx.request_id, 
+            str(pipeline_error),
+            exc_info=e
+        )
         ctx.error = pipeline_error
         ctx.response = None
         ctx.next_pipeline_state = PipelineState.ERROR
@@ -275,6 +296,12 @@ async def _execute_llm_call(ctx: RequestContext):
         # Classify and raise pipeline error - this will be caught by signal handler
         provider = _extract_provider_from_model(ctx.request.model_id)
         pipeline_error = classify_llm_error(e, ctx.request_id, provider)
+        logger.error(
+            "LLM call error in request %s: %s", 
+            ctx.request_id, 
+            str(pipeline_error),
+            exc_info=e
+        )
         raise pipeline_error
     finally:
         await ctx.pipeline.llm_call.execute_post(ctx)
