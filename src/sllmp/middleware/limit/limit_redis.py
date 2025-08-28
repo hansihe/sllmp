@@ -10,7 +10,7 @@ Provides a production-ready Redis backend that supports:
 
 import logging
 import time
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from .limit import BaseLimitBackend
 
@@ -40,6 +40,7 @@ if REDIS_AVAILABLE:
         def __init__(
             self,
             redis_url: str = "redis://localhost:6379/0",
+            redis_kwargs: Dict[str, Any] = {},
             key_prefix: str = "llm_limit:",
             budget_key_ttl: Optional[int] = None,
             rate_key_ttl: int = 120  # 2 minutes for rate limiting cleanup
@@ -62,6 +63,7 @@ if REDIS_AVAILABLE:
             self.key_prefix = key_prefix
             self.budget_key_ttl = budget_key_ttl
             self.rate_key_ttl = rate_key_ttl
+            self.redis_kwargs = redis_kwargs
             self._redis: Optional['Redis'] = None
 
         async def _get_redis(self) -> 'Redis':
@@ -71,7 +73,7 @@ if REDIS_AVAILABLE:
                     "Redis is not installed. Install with: pip install redis"
                 )
             if self._redis is None:
-                self._redis = from_url(self.redis_url, decode_responses=True)
+                self._redis = from_url(self.redis_url, decode_responses=True, **self.redis_kwargs)
             return self._redis
 
         async def close(self) -> None:
