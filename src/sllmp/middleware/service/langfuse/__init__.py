@@ -8,17 +8,60 @@ except ImportError:
 else:
     _has_langfuse = True
 
+import os
 from typing import Dict, Optional, cast
 
 from sllmp.error import MiddlewareError
 from sllmp.pipeline import RequestContext
 
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.resources import Resource
+#from opentelemetry.trace import use_span
+#from opentelemetry.trace.span import INVALID_SPAN
+from opentelemetry import context as ctx_api, trace
+from opentelemetry.trace import set_span_in_context
+
+
 if _has_langfuse:
-    import langfuse.model
+    import langfuse
+    from langfuse import Langfuse
+    from langfuse.model import PromptClient
+    from langfuse._client.attributes import LangfuseOtelSpanAttributes
+    from langfuse._client.environment_variables import (
+        LANGFUSE_RELEASE,
+        LANGFUSE_TRACING_ENVIRONMENT,
+    )
 
     from .util import process_output, extract_chat_prompt
 
-    LANGFUSE_CLIENTS: Dict[str, langfuse.Langfuse] = {}
+    LANGFUSE_CLIENTS: Dict[str, Langfuse] = {}
+
+    def _make_langfuse_client(public_key, secret_key, base_url):
+        environment = os.environ.get(LANGFUSE_TRACING_ENVIRONMENT)
+        release = os.environ.get(LANGFUSE_RELEASE)
+
+        resource_attributes = {
+            LangfuseOtelSpanAttributes.ENVIRONMENT: environment,
+            LangfuseOtelSpanAttributes.RELEASE: release,
+        }
+
+        resource = Resource.create(
+            {k: v for k, v in resource_attributes.items() if v is not None}
+        )
+
+        # Because OTEL tracing may also be configured on a global level,
+        # we create a separate TracerProvider for LangFuse specifically.
+        provider = TracerProvider(
+            resource=resource,
+            sampler=None,
+        )
+
+        return Langfuse(
+            secret_key=secret_key,
+            public_key=public_key,
+            host=base_url,
+            tracer_provider=provider
+        )
 
     def langfuse_middleware(
         public_key: str,
@@ -26,6 +69,7 @@ if _has_langfuse:
         base_url: str = "https://cloud.langfuse.com",
         default_prompt_label: str = "latest"
     ):
+
         def setup(ctx: RequestContext):
             """
             Configures the Langfuse for the request.
@@ -35,10 +79,10 @@ if _has_langfuse:
 
             client = LANGFUSE_CLIENTS.get(public_key, None)
             if client is None:
-                client = langfuse.Langfuse(
-                    secret_key=secret_key,
+                client = _make_langfuse_client(
                     public_key=public_key,
-                    host=base_url
+                    secret_key=secret_key,
+                    base_url=base_url
                 )
                 LANGFUSE_CLIENTS[public_key] = client
 
@@ -63,7 +107,7 @@ if _has_langfuse:
 
         if prompt_id is not None:
             langfuse_state = ctx.state['langfuse']
-            client = cast(langfuse.Langfuse, langfuse_state['client'])
+            client = cast(Langfuse, langfuse_state['client'])
 
             prompt_label = langfuse_state['prompt_label']
 
@@ -89,22 +133,28 @@ if _has_langfuse:
             langfuse_state["used_prompt_client"] = prompt_client
             langfuse_state["used_prompt_variables"] = prompt_variables
 
-    def _observability_setup(ctx: RequestContext, client: langfuse.Langfuse):
+    def _observability_setup(ctx: RequestContext, client: Langfuse):
         langfuse_state = ctx.state['langfuse']
+
+        # Create new root span for LLM observability without infra observability parent
+        token = ctx_api.attach(set_span_in_context(trace.INVALID_SPAN, ctx_api.Context()))
         root_span = client.start_span(
             name="chat-completion",
+            input=extract_chat_prompt(ctx.request),
             metadata=ctx.client_metadata,
         )
+        ctx_api.detach(token)
+
         langfuse_state['root_span'] = root_span
 
         generation = None
 
         def observability_pre_llm(ctx: RequestContext):
-            used_prompt_client = cast(Optional[langfuse.model.PromptClient], langfuse_state.get('used_prompt_client', None))
+            used_prompt_client = cast(Optional[PromptClient], langfuse_state.get('used_prompt_client', None))
 
             nonlocal generation
             generation = root_span.start_observation(
-                name="chat-completion",
+                name="llm-request",
                 as_type="generation",
                 input=extract_chat_prompt(ctx.request),
                 metadata=ctx.client_metadata,
