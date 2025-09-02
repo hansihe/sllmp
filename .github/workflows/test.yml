@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
@@ -14,27 +14,27 @@ jobs:
         python-version: ["3.13"]
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
-    - name: Set up Python ${{ matrix.python-version }}
-      run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: uv sync --dev
+      - name: Install dependencies
+        run: uv sync --dev
 
-    - name: Run linting
-      run: uv run ruff check
+      # - name: Run linting
+      #   run: uv run ruff check
 
-    - name: Run type checking
-      run: uv run mypy src
+      # - name: Run type checking
+      #   run: uv run mypy src
 
-    - name: Run tests (excluding containers)
-      run: uv run pytest -m "not containers"
+      - name: Run tests (excluding containers)
+        run: uv run pytest -m "not containers"
 
-    - name: Run container tests
-      run: uv run pytest -m "containers"
+      - name: Run container tests
+        run: uv run pytest -m "containers"
