@@ -13,17 +13,6 @@ jobs:
       matrix:
         python-version: ["3.13"]
 
-    services:
-      redis:
-        image: redis:7
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
     steps:
     - uses: actions/checkout@v4
 
@@ -44,13 +33,8 @@ jobs:
     - name: Run type checking
       run: uv run mypy src
 
-    - name: Run tests (excluding Redis and containers)
-      run: uv run pytest -m "not redis and not containers"
-
-    - name: Run Redis tests
-      run: uv run pytest -m "redis and not containers"
-      env:
-        REDIS_URL: redis://localhost:6379
+    - name: Run tests (excluding containers)
+      run: uv run pytest -m "not containers"
 
     - name: Run container tests
       run: uv run pytest -m "containers"
