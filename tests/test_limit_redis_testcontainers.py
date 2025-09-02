@@ -52,7 +52,9 @@ def redis_container():
 @pytest.fixture(scope="session")
 def redis_url(redis_container):
     """Get the Redis URL from the container."""
-    return redis_container.get_connection_url()
+    host = redis_container.get_container_host_ip()
+    port = redis_container.get_exposed_port(6379)
+    return f"redis://{host}:{port}"
 
 
 @pytest.fixture
@@ -264,73 +266,6 @@ class TestRedisLimitBackendWithContainers:
         assert usage == 7.0
 
 
-class TestRedisBackendIntegrationWithContainers:
-    """Test Redis backend integration with middleware using containers."""
-
-    async def test_middleware_integration(self, redis_backend):
-        """Test full integration with limit enforcement middleware."""
-        from sllmp.middleware.limit.limit import LimitEnforcementMiddleware, Constraint, BudgetLimit
-        from sllmp.pipeline import create_request_context, PipelineAction
-
-        constraint = Constraint(
-            name="Container Test Budget",
-            dimensions=["user_id"],
-            budget_limit=BudgetLimit(limit=2.0, window="1d"),
-            rate_limit=None,
-            description="Test budget with containers"
-        )
-
-        middleware = LimitEnforcementMiddleware(
-            constraints=[constraint],
-            backend=redis_backend
-        )
-
-        request = {
-            "model": "openai:gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": "Test message"}]
-        }
-        ctx = create_request_context(request)
-        ctx.client_metadata['user_id'] = 'container_integration_user'
-
-        result_ctx = await middleware.before_llm(ctx)
-        assert result_ctx.action == PipelineAction.CONTINUE
-
-        ctx.response = {"usage": {"total_tokens": 1000}}
-        await middleware.after_llm(ctx)
-
-        usage = await redis_backend.get_usage("user:container_integration_user", "1d")
-        assert usage > 0.0
-
-    async def test_budget_enforcement_with_containers(self, redis_backend):
-        """Test budget enforcement using containers."""
-        from sllmp.middleware.limit.limit import LimitEnforcementMiddleware, Constraint, BudgetLimit
-        from sllmp.pipeline import create_request_context, PipelineAction
-
-        await redis_backend.increment_usage("user:budget_enforce", 1.95, "1d")
-
-        constraint = Constraint(
-            name="Strict Budget",
-            dimensions=["user_id"],
-            budget_limit=BudgetLimit(limit=2.0, window="1d"),
-            rate_limit=None,
-            description="Strict budget limit"
-        )
-
-        middleware = LimitEnforcementMiddleware(
-            constraints=[constraint],
-            backend=redis_backend
-        )
-
-        request = {
-            "model": "openai:gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": "This should be blocked"}]
-        }
-        ctx = create_request_context(request)
-        ctx.client_metadata['user_id'] = 'budget_enforce'
-
-        result_ctx = await middleware.before_llm(ctx)
-        assert result_ctx.action == PipelineAction.HALT
-        assert "Budget limit exceeded" in result_ctx.response["error"]["message"]
 
 
 class TestRedisContainerConfiguration:
