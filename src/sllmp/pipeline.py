@@ -17,7 +17,7 @@ from sllmp.util.signal import SignalExecutionResult
 logger = logging.getLogger(__name__)
 
 from .error import (
-    PipelineError, MiddlewareError, AuthenticationError,
+    PipelineError, MiddlewareError, AuthenticationError, ProviderBadRequestError,
     RateLimitError, ContentPolicyError, ModelNotFoundError, NetworkError,
     ServiceUnavailableError, InternalError
 )
@@ -206,6 +206,16 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
             request_id=request_id,
             provider=provider
         )
+
+    # Add patterns for bad request errors
+    if any(
+        pattern in error_msg
+        for pattern in [
+            "invalid_request_error",
+            "Error code: 4",
+        ]
+    ):
+        return ProviderBadRequestError(message=str(exception), request_id=request_id, provider=provider)
 
     # Default to internal error for unclassified exceptions
     return InternalError(

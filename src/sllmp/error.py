@@ -62,7 +62,6 @@ class AuthenticationError(PipelineError):
     """Error due to authentication failure."""
     error_type: str = field(default="authentication_error", init=False)
 
-
 @dataclass
 class InternalError(PipelineError):
     """Internal system error."""
@@ -82,6 +81,10 @@ class LLMProviderError(PipelineError):
             base["provider_error_code"] = self.provider_error_code
         return base
 
+@dataclass
+class ProviderBadRequestError(LLMProviderError):
+    """Error when the provider rejects the request (4xx)."""
+    error_type: str = field(default="provider_bad_request", init=False)
 
 @dataclass
 class RateLimitError(LLMProviderError):
