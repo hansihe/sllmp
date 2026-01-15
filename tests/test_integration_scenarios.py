@@ -15,7 +15,7 @@ from typing import Dict, Any, List
 from sllmp import SimpleProxyServer
 from sllmp.context import Pipeline, RequestContext
 from sllmp.middleware import logging_middleware, retry_middleware
-from sllmp.error import ValidationError, RateLimitError
+from sllmp.error import ValidationError, ProviderRateLimitError
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 
 
@@ -110,7 +110,7 @@ async def custom_pipeline_client(mock_llm_completion):
             async def check_rate_limit(ctx: RequestContext):
                 user_id = ctx.client_metadata.get("user_id", "anonymous")
                 if user_id == "rate_limited_user":
-                    raise RateLimitError(
+                    raise ProviderRateLimitError(
                         "Rate limit exceeded",
                         request_id=ctx.request_id,
                         provider="test",
@@ -274,7 +274,7 @@ class TestMiddlewareIntegration:
 
         data = response.json()
         assert "error" in data
-        assert data["error"]["type"] == "rate_limit_error"
+        assert data["error"]["type"] == "provider_rate_limit_error"
 
     async def test_content_filtering_middleware(self, custom_pipeline_client):
         """Test content filtering middleware blocks inappropriate content."""

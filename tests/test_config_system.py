@@ -18,6 +18,11 @@ from sllmp.config.config import (
     LangfuseConfig, ResolvedFeatureConfig, ConfigurationError
 )
 from sllmp.middleware.limit.limit import Constraint
+from any_llm.exceptions import (
+    RateLimitError as AnyLLMRateLimitError,
+    AuthenticationError as AnyLLMAuthenticationError,
+    ProviderError as AnyLLMProviderError,
+)
 
 
 @pytest.fixture
@@ -1357,7 +1362,7 @@ class TestRetryIntegration:
 
         # Configure mock to fail once with rate limit error, then succeed
         mock_llm_completion_with_failures.failures_before_success[0] = 1
-        mock_llm_completion_with_failures.failure_exception[0] = Exception("Rate limit exceeded. Too many requests")
+        mock_llm_completion_with_failures.failure_exception[0] = AnyLLMRateLimitError("Rate limit exceeded")
 
         def create_pipeline():
             from sllmp.context import Pipeline
@@ -1397,7 +1402,7 @@ class TestRetryIntegration:
 
         # Configure mock to always fail (more failures than max retries)
         mock_llm_completion_with_failures.failures_before_success[0] = 100
-        mock_llm_completion_with_failures.failure_exception[0] = Exception("Service unavailable 503")
+        mock_llm_completion_with_failures.failure_exception[0] = AnyLLMProviderError("Service unavailable")
 
         def create_pipeline():
             from sllmp.context import Pipeline
@@ -1439,7 +1444,7 @@ class TestRetryIntegration:
 
         # Configure mock to fail with auth error (not retryable)
         mock_llm_completion_with_failures.failures_before_success[0] = 100
-        mock_llm_completion_with_failures.failure_exception[0] = Exception("Invalid API key unauthorized")
+        mock_llm_completion_with_failures.failure_exception[0] = AnyLLMAuthenticationError("Invalid API key")
 
         def create_pipeline():
             from sllmp.context import Pipeline
@@ -1479,7 +1484,7 @@ class TestRetryIntegration:
 
         # Configure mock to fail once with internal error, then succeed
         mock_llm_completion_with_failures.failures_before_success[0] = 1
-        mock_llm_completion_with_failures.failure_exception[0] = Exception("Internal server error 500")
+        mock_llm_completion_with_failures.failure_exception[0] = AnyLLMProviderError("Internal server error")
 
         def create_pipeline():
             from sllmp.context import Pipeline

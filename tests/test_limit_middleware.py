@@ -12,7 +12,7 @@ from sllmp.middleware.limit import (
     Constraint,
     InMemoryLimitBackend,
     BaseLimitBackend,
-    LimitError
+    ClientRateLimitError
 )
 from sllmp.pipeline import create_request_context
 from sllmp.context import PipelineAction
@@ -264,7 +264,7 @@ class TestLimitEnforcementMiddleware:
 
         result_ctx = await middleware.before_llm(ctx)
         assert result_ctx.action == PipelineAction.HALT
-        assert isinstance(result_ctx.response, LimitError)
+        assert isinstance(result_ctx.response, ClientRateLimitError)
         assert "Budget limit exceeded" in result_ctx.response.message
         assert "budget_limit_exceeded" == result_ctx.response.error_type
 
@@ -287,7 +287,7 @@ class TestLimitEnforcementMiddleware:
 
         result_ctx = await middleware.before_llm(ctx)
         assert result_ctx.action == PipelineAction.HALT
-        assert isinstance(result_ctx.response, LimitError)
+        assert isinstance(result_ctx.response, ClientRateLimitError)
         assert "Rate limit exceeded" in result_ctx.response.message
         assert "rate_limit_exceeded" == result_ctx.response.error_type
 
@@ -644,7 +644,7 @@ class TestIntegrationScenarios:
         # Should reject due to user budget being too tight
         result_ctx = await middleware.before_llm(ctx)
         assert result_ctx.action == PipelineAction.HALT
-        assert isinstance(result_ctx.response, LimitError)
+        assert isinstance(result_ctx.response, ClientRateLimitError)
         assert "Budget limit exceeded" in result_ctx.response.message
 
     async def test_production_scenario_user_over_rate_limit(self, production_constraints, authenticated_request):
@@ -664,7 +664,7 @@ class TestIntegrationScenarios:
         # Should reject due to rate limit
         result_ctx = await middleware.before_llm(ctx)
         assert result_ctx.action == PipelineAction.HALT
-        assert isinstance(result_ctx.response, LimitError)
+        assert isinstance(result_ctx.response, ClientRateLimitError)
         assert "Rate limit exceeded" in result_ctx.response.message
 
 

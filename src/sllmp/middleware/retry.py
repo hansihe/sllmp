@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 from ..context import RequestContext, PipelineState
 from ..error import (
     PipelineError,
-    RateLimitError,
+    ProviderRateLimitError,
     NetworkError,
     ServiceUnavailableError,
     InternalError
@@ -66,7 +66,7 @@ def retry_middleware(
 
     if retryable_errors is None:
         retryable_errors = {
-            RateLimitError,
+            ProviderRateLimitError,
             NetworkError,
             ServiceUnavailableError,
             InternalError
@@ -136,7 +136,7 @@ def retry_middleware(
         )
 
         # For rate limit errors, respect the retry_after if provided
-        if isinstance(ctx.error, RateLimitError) and hasattr(ctx.error, 'retry_after') and ctx.error.retry_after:
+        if isinstance(ctx.error, ProviderRateLimitError) and hasattr(ctx.error, 'retry_after') and ctx.error.retry_after:
             delay = max(delay, ctx.error.retry_after)
 
         if retry_state.log_retries:

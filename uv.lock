@@ -12,18 +12,17 @@ wheels = [
 
 [[package]]
 name = "any-llm-sdk"
-version = "0.16.0"
+version = "1.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "rich" },
-    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/af/7c9d11a4590deb3614aa4a2b28bc03bc39673c694359ab38dcfd60695a5a/any_llm_sdk-0.16.0.tar.gz", hash = "sha256:3bad38cb523f55c42618bc259e317f9334835dd9ca117c8680ed2efd1ae87067", size = 1164144 }
+sdist = { url = "https://files.pythonhosted.org/packages/15/99/887b0fb3993408af0544fcc16081178c0d9bfef5c5e4aa3f450063dbdfaf/any_llm_sdk-1.6.2.tar.gz", hash = "sha256:e71875cd58a838da9ddfbd131ecccbb43a124a08abc8e8d4beba69ed3bad8ec7", size = 119541 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/01/ec21a4c48f172033a2f0ca66856b9625a60313d0e45559be99e9be15b4ae/any_llm_sdk-0.16.0-py3-none-any.whl", hash = "sha256:194ca63850901d02c9acf194efc1841684038cbb4ed5016eedbfc0760b65ebff", size = 99724 },
+    { url = "https://files.pythonhosted.org/packages/79/2b/18d8075b5ed6fef4df8021a1346ef636a73e10b57d59061fdbdfee28ea4b/any_llm_sdk-1.6.2-py3-none-any.whl", hash = "sha256:83ec1fb428aa1a19dd92bb6bc1ea3f238c73b77851656cdff6c4af658da31798", size = 171060 },
 ]
 
 [[package]]
@@ -829,7 +828,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "any-llm-sdk", extras = ["openai"], specifier = ">=0.16.0" },
+    { name = "any-llm-sdk", extras = ["openai"], specifier = ">=1.6.2" },
     { name = "ezpubsub", specifier = ">=0.3.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "langfuse", specifier = ">=3.3.1" },

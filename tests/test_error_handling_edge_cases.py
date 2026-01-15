@@ -14,7 +14,7 @@ from typing import Dict, Any, AsyncGenerator
 from sllmp.context import Pipeline, RequestContext, PipelineState, NCompletionParams
 from sllmp.pipeline import create_request_context, execute_pipeline
 from sllmp.error import (
-    ValidationError, PipelineError, RateLimitError,
+    ValidationError, PipelineError, ProviderRateLimitError,
     LLMProviderError, NetworkError, InternalError, MiddlewareError
 )
 from sllmp.util.signal import Signal
@@ -445,8 +445,8 @@ class TestErrorSerialization:
         assert serialized["error"]["field"] == "temperature"
 
     def test_rate_limit_error_serialization(self):
-        """Test RateLimitError serializes with retry information."""
-        error = RateLimitError(
+        """Test ProviderRateLimitError serializes with retry information."""
+        error = ProviderRateLimitError(
             "Rate limit exceeded",
             request_id="req_test123",
             provider="openai",
@@ -455,7 +455,7 @@ class TestErrorSerialization:
 
         serialized = error.to_dict()
 
-        assert serialized["error"]["type"] == "rate_limit_error"
+        assert serialized["error"]["type"] == "provider_rate_limit_error"
         assert serialized["error"]["provider"] == "openai"
         assert serialized["error"]["retry_after"] == 60
 

@@ -87,11 +87,11 @@ class ProviderBadRequestError(LLMProviderError):
     error_type: str = field(default="provider_bad_request", init=False)
 
 @dataclass
-class RateLimitError(LLMProviderError):
-    """Rate limit exceeded by LLM provider."""
+class ProviderRateLimitError(LLMProviderError):
+    """Rate limit exceeded by LLM provider. Retryable."""
     retry_after: Optional[int] = None  # Seconds to wait before retry
-    error_type: str = field(default="rate_limit_error", init=False)
-    
+    error_type: str = field(default="provider_rate_limit_error", init=False)
+
     def _extra_fields(self) -> Dict[str, Any]:
         base = super()._extra_fields()
         if self.retry_after:
@@ -110,11 +110,17 @@ class ModelNotFoundError(LLMProviderError):
     """Requested model not available."""
     model_id: str = field(default="unknown")
     error_type: str = field(default="model_not_found_error", init=False)
-    
+
     def _extra_fields(self) -> Dict[str, Any]:
         base = super()._extra_fields()
         base["model_id"] = self.model_id
         return base
+
+
+@dataclass
+class ContextLengthExceededError(LLMProviderError):
+    """Input exceeds model's maximum context length."""
+    error_type: str = field(default="context_length_exceeded_error", init=False)
 
 
 @dataclass

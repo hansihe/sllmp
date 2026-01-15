@@ -13,7 +13,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from sllmp.context import RequestContext, Pipeline, PipelineState
 from sllmp.middleware.retry import retry_middleware, _is_retryable_error
 from sllmp.error import (
-    RateLimitError,
+    ProviderRateLimitError,
     NetworkError,
     ServiceUnavailableError,
     InternalError,
@@ -51,9 +51,9 @@ class TestRetryMiddleware:
     def test_retryable_error_detection(self):
         """Test that retryable errors are correctly identified."""
         # Retryable errors
-        retryable_errors = {RateLimitError, NetworkError, ServiceUnavailableError, InternalError}
+        retryable_errors = {ProviderRateLimitError, NetworkError, ServiceUnavailableError, InternalError}
 
-        rate_limit_error = RateLimitError("Rate limited", "req_123", "openai")
+        rate_limit_error = ProviderRateLimitError("Rate limited", "req_123", "openai")
         network_error = NetworkError("Connection failed", "req_123", "openai")
         service_error = ServiceUnavailableError("Service down", "req_123", "openai")
         internal_error = InternalError("Internal error", "req_123")
@@ -65,7 +65,7 @@ class TestRetryMiddleware:
 
     def test_non_retryable_error_detection(self):
         """Test that non-retryable errors are correctly identified."""
-        retryable_errors = {RateLimitError, NetworkError, ServiceUnavailableError, InternalError}
+        retryable_errors = {ProviderRateLimitError, NetworkError, ServiceUnavailableError, InternalError}
 
         auth_error = AuthenticationError("Bad API key", "req_123")
         validation_error = ValidationError("Invalid request", "req_123")
@@ -177,7 +177,7 @@ class TestRetryMiddleware:
 
         with patch('asyncio.sleep', side_effect=mock_sleep):
             for attempt in range(2):  # Two retries
-                rate_limit_error = RateLimitError("Rate limited", mock_context.request_id, "openai")
+                rate_limit_error = ProviderRateLimitError("Rate limited", mock_context.request_id, "openai")
                 mock_context.error = rate_limit_error
                 mock_context.response = None
 
@@ -190,7 +190,7 @@ class TestRetryMiddleware:
 
     @pytest.mark.asyncio
     async def test_rate_limit_retry_after_respect(self, mock_context):
-        """Test that RateLimitError retry_after is respected."""
+        """Test that ProviderRateLimitError retry_after is respected."""
         middleware = retry_middleware(max_attempts=3, base_delay=0.1)
         middleware(mock_context)
 
@@ -201,7 +201,7 @@ class TestRetryMiddleware:
 
         with patch('asyncio.sleep', side_effect=mock_sleep):
             # Rate limit error with retry_after
-            rate_limit_error = RateLimitError(
+            rate_limit_error = ProviderRateLimitError(
                 "Rate limited",
                 mock_context.request_id,
                 "openai",
@@ -248,7 +248,7 @@ class TestRetryMiddleware:
     async def test_custom_retryable_errors(self, mock_context):
         """Test retry middleware with custom retryable error set."""
         # Only retry rate limit errors
-        custom_retryable = {RateLimitError}
+        custom_retryable = {ProviderRateLimitError}
         middleware = retry_middleware(
             max_attempts=3,
             retryable_errors=custom_retryable
@@ -270,7 +270,7 @@ class TestRetryMiddleware:
         # Rate limit error should be retried
         mock_context.error = None  # Clear error
         mock_context.response = None
-        rate_limit_error = RateLimitError("Rate limited", mock_context.request_id, "openai")
+        rate_limit_error = ProviderRateLimitError("Rate limited", mock_context.request_id, "openai")
         mock_context.error = rate_limit_error
 
         await mock_context.pipeline.error.emit(mock_context)

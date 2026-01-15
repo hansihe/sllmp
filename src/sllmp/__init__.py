@@ -25,11 +25,12 @@ from .middleware import (
 # Re-export error types
 from .error import (
     AuthenticationError,
-    RateLimitError, 
+    ProviderRateLimitError,
     InternalError,
     ValidationError,
     PipelineError,
 )
+from .middleware.limit import ClientRateLimitError
 
 __all__ = [
     # Core components
@@ -49,8 +50,9 @@ __all__ = [
     
     # Errors
     'AuthenticationError',
-    'RateLimitError',
-    'InternalError', 
+    'ProviderRateLimitError',
+    'ClientRateLimitError',
+    'InternalError',
     'ValidationError',
     'PipelineError',
 ]

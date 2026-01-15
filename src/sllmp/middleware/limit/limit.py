@@ -21,8 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 @dataclass
-class LimitError(PipelineError):
-    """Error due to budget or rate limit exceeded."""
+class ClientRateLimitError(PipelineError):
+    """Client exceeded quota/rate limit enforced by our middleware. Not retryable."""
 
     limit_type: str  # "budget_limit_exceeded" or "rate_limit_exceeded"
     constraint_description: str
@@ -257,7 +257,7 @@ def limit_enforcement_middleware(
                         if (
                             current_usage + estimated_cost
                         ) > constraint.budget_limit.limit:
-                            budget_error = LimitError(
+                            budget_error = ClientRateLimitError(
                                 message=f"Budget limit exceeded: {constraint.description}. "
                                 f"Current usage: ${current_usage:.4f}, "
                                 f"Limit: ${constraint.budget_limit.limit:.4f}, "
@@ -275,7 +275,7 @@ def limit_enforcement_middleware(
                 current_rate_usage = await backend.get_rate_usage(constraint_key)
 
                 if current_rate_usage >= constraint.rate_limit.per_minute:
-                    rate_error = LimitError(
+                    rate_error = ClientRateLimitError(
                         message=f"Rate limit exceeded: {constraint.description}. "
                         f"Current usage: {current_rate_usage} requests/minute, "
                         f"Limit: {constraint.rate_limit.per_minute} requests/minute",

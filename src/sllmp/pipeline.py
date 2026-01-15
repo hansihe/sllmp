@@ -11,6 +11,17 @@ import logging
 
 import any_llm
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
+from any_llm.exceptions import (
+    AnyLLMError,
+    AuthenticationError as AnyLLMAuthenticationError,
+    RateLimitError as AnyLLMRateLimitError,
+    ContentFilterError,
+    ModelNotFoundError as AnyLLMModelNotFoundError,
+    ProviderError,
+    InvalidRequestError,
+    ContextLengthExceededError as AnyLLMContextLengthExceededError,
+    MissingApiKeyError,
+)
 from typing import AsyncIterator
 
 from sllmp.util.signal import SignalExecutionResult
@@ -19,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 from .error import (
     PipelineError, MiddlewareError, AuthenticationError, ProviderBadRequestError,
-    RateLimitError, ContentPolicyError, ModelNotFoundError, NetworkError,
-    ServiceUnavailableError, InternalError
+    ProviderRateLimitError, ContentPolicyError, ModelNotFoundError, ContextLengthExceededError,
+    NetworkError, ServiceUnavailableError, InternalError
 )
 from .context import RequestContext, NCompletionParams, PipelineState
 
@@ -210,50 +221,62 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
         Appropriate PipelineError subclass
     """
     error_msg = str(exception)
-    error_msg_lower = error_msg.lower()
 
-    # Authentication errors
-    if any(term in error_msg_lower for term in ["unauthorized", "invalid api key", "authentication", "api key"]):
+    # Handle typed any-llm exceptions
+    if isinstance(exception, (AnyLLMAuthenticationError, MissingApiKeyError)):
         return AuthenticationError(
             message=f"Authentication failed with {provider}: {error_msg}",
             request_id=request_id
         )
 
-    # Rate limit errors
-    if any(term in error_msg_lower for term in ["rate limit", "quota exceeded", "too many requests"]):
-        # Try to extract retry_after if available
-        retry_after = None
-        # Common patterns: "Rate limit exceeded. Try again in 60 seconds"
-        import re
-        match = re.search(r'try again in (\d+) seconds?', error_msg_lower)
-        if match:
-            retry_after = int(match.group(1))
-
-        return RateLimitError(
+    if isinstance(exception, AnyLLMRateLimitError):
+        return ProviderRateLimitError(
             message=f"Rate limit exceeded for {provider}: {error_msg}",
             request_id=request_id,
             provider=provider,
-            retry_after=retry_after
+            retry_after=None
         )
 
-    # Content policy errors
-    if any(term in error_msg_lower for term in ["content policy", "safety", "filtered", "inappropriate"]):
+    if isinstance(exception, ContentFilterError):
         return ContentPolicyError(
             message=f"Content blocked by {provider}: {error_msg}",
             request_id=request_id,
             provider=provider
         )
 
-    # Model errors
-    if any(term in error_msg_lower for term in ["model not found", "invalid model", "model.*not.*available"]):
+    if isinstance(exception, AnyLLMModelNotFoundError):
         return ModelNotFoundError(
             message=f"Model not available on {provider}: {error_msg}",
             request_id=request_id,
             provider=provider,
-            model_id="unknown"  # Could extract from context
+            model_id="unknown"
         )
 
-    # Network errors
+    if isinstance(exception, AnyLLMContextLengthExceededError):
+        return ContextLengthExceededError(
+            message=f"Context length exceeded for {provider}: {error_msg}",
+            request_id=request_id,
+            provider=provider
+        )
+
+    if isinstance(exception, InvalidRequestError):
+        return ProviderBadRequestError(
+            message=f"Invalid request to {provider}: {error_msg}",
+            request_id=request_id,
+            provider=provider
+        )
+
+    if isinstance(exception, ProviderError):
+        return ServiceUnavailableError(
+            message=f"Provider error from {provider}: {error_msg}",
+            request_id=request_id,
+            provider=provider
+        )
+
+    # Fallback: string-based matching for errors not wrapped by any-llm
+    # (e.g., network errors from HTTP client, raw HTTP status codes)
+    error_msg_lower = error_msg.lower()
+
     if any(term in error_msg_lower for term in ["connection", "timeout", "network", "dns", "unreachable"]):
         return NetworkError(
             message=f"Network error connecting to {provider}: {error_msg}",
@@ -261,23 +284,12 @@ def classify_llm_error(exception: Exception, request_id: str, provider: str = "u
             provider=provider
         )
 
-    # Service errors (5xx status codes)
-    if any(term in error_msg_lower for term in ["service unavailable", "internal server error", "502", "503", "504"]):
+    if any(term in error_msg_lower for term in ["service unavailable", "502", "503", "504"]):
         return ServiceUnavailableError(
             message=f"Service unavailable from {provider}: {error_msg}",
             request_id=request_id,
             provider=provider
         )
-
-    # Add patterns for bad request errors
-    if any(
-        pattern in error_msg
-        for pattern in [
-            "invalid_request_error",
-            "Error code: 4",
-        ]
-    ):
-        return ProviderBadRequestError(message=str(exception), request_id=request_id, provider=provider)
 
     # Default to internal error for unclassified exceptions
     return InternalError(
