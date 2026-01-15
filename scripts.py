@@ -24,12 +24,9 @@ def test_verbose() -> int:
 
 def test_coverage() -> int:
     """Run tests with coverage."""
-    return run_command([
-        "pytest",
-        "--cov=sllmp",
-        "--cov-report=html",
-        "--cov-report=term"
-    ])
+    return run_command(
+        ["pytest", "--cov=sllmp", "--cov-report=html", "--cov-report=term"]
+    )
 
 
 def lint() -> int:
@@ -49,23 +46,16 @@ def type_check() -> int:
 
 def dev() -> int:
     """Start development server."""
-    return run_command([
-        "uvicorn",
-        "sllmp.main:app",
-        "--reload",
-        "--host", "0.0.0.0",
-        "--port", "8000"
-    ])
+    return run_command(
+        ["uvicorn", "sllmp.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    )
 
 
 def serve() -> int:
     """Start production server."""
-    return run_command([
-        "uvicorn",
-        "sllmp.main:app",
-        "--host", "0.0.0.0",
-        "--port", "8000"
-    ])
+    return run_command(
+        ["uvicorn", "sllmp.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    )
 
 
 def main() -> None:

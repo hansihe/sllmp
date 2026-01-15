@@ -8,14 +8,20 @@ from typing import Any, Dict, List, Optional, Callable
 from .util.signal import Signal, Hooks
 
 import pydantic
-from any_llm.types.completion import CompletionParams, ChatCompletion, ChatCompletionChunk
+from any_llm.types.completion import (
+    CompletionParams,
+    ChatCompletion,
+    ChatCompletionChunk,
+)
 
 from .error import PipelineError
 from .util.stream import MultiChoiceDeltaCollector
 
+
 def generate_request_id() -> str:
     """Generate a unique request ID."""
     return f"req_{uuid.uuid4().hex[:8]}"
+
 
 @dataclass
 class Pipeline:
@@ -77,14 +83,18 @@ class Pipeline:
 
     # Maybe `stream_start`, `stream_end`, `stream_error`?
 
-    llm_call_stream_process: Signal[[RequestContext, ChatCompletionChunk], None] = field(default_factory=Signal)
+    llm_call_stream_process: Signal[[RequestContext, ChatCompletionChunk], None] = (
+        field(default_factory=Signal)
+    )
     """
     Process individual chunks during streaming.
 
     Callbacks can perform per-chunk transformations.
     """
 
-    llm_call_stream_update: Signal[[RequestContext], None] = field(default_factory=Signal)
+    llm_call_stream_update: Signal[[RequestContext], None] = field(
+        default_factory=Signal
+    )
     """
     Called periodically during streaming with accumulated content so far.
 
@@ -129,15 +139,19 @@ class Pipeline:
         self.error.close()
         self.response_complete.close()
 
+
 class NCompletionParams(CompletionParams):
     model_config = pydantic.ConfigDict(extra="allow")
     metadata: Dict[str, Any] = pydantic.Field()
 
+
 class PipelineAction(Enum):
     """Actions that control pipeline flow."""
+
     CONTINUE = "continue"  # Keep processing through pipeline
-    HALT = "halt"         # Stop pipeline and return current response
-    RETRY = "retry"       # Retry current operation (TODO: implement retry logic)
+    HALT = "halt"  # Stop pipeline and return current response
+    RETRY = "retry"  # Retry current operation (TODO: implement retry logic)
+
 
 class PipelineState(Enum):
     SETUP = "setup"
@@ -146,6 +160,7 @@ class PipelineState(Enum):
     POST = "post"
     ERROR = "error"
     COMPLETE = "complete"
+
 
 @dataclass
 class RequestContext:
@@ -156,11 +171,12 @@ class RequestContext:
     the request/response data and provides a place for middleware to communicate
     through shared state.
     """
+
     # Core request/response data
-    original_request: CompletionParams                 # Immutable original OpenAI request
-    request: CompletionParams                          # Mutable current request state
-    response: Optional[ChatCompletion] = None          # Successful response from LLM
-    error: Optional[PipelineError] = None              # Pipeline error if occurred
+    original_request: CompletionParams  # Immutable original OpenAI request
+    request: CompletionParams  # Mutable current request state
+    response: Optional[ChatCompletion] = None  # Successful response from LLM
+    error: Optional[PipelineError] = None  # Pipeline error if occurred
 
     # Pipeline state
     pipeline: Pipeline = field(default_factory=Pipeline)
@@ -170,17 +186,25 @@ class RequestContext:
 
     # Request identification and metadata
     request_id: str = field(default_factory=generate_request_id)
-    client_metadata: Dict[str, Any] = field(default_factory=dict)  # From OpenAI metadata + headers
+    client_metadata: Dict[str, Any] = field(
+        default_factory=dict
+    )  # From OpenAI metadata + headers
 
     # Shared state between middleware
     provider_keys: Dict[str, str] = field(default_factory=dict)
-    state: Dict[str, Any] = field(default_factory=dict)      # Inter-middleware communication
-    metadata: Dict[str, Any] = field(default_factory=dict)   # Pipeline execution metadata
-    errors: List[Exception] = field(default_factory=list)    # Accumulated errors
+    state: Dict[str, Any] = field(
+        default_factory=dict
+    )  # Inter-middleware communication
+    metadata: Dict[str, Any] = field(
+        default_factory=dict
+    )  # Pipeline execution metadata
+    errors: List[Exception] = field(default_factory=list)  # Accumulated errors
 
     # Stream characteristics (auto-detected)
     chunk_count: int = 0
-    stream_collector: MultiChoiceDeltaCollector = field(default_factory=MultiChoiceDeltaCollector)
+    stream_collector: MultiChoiceDeltaCollector = field(
+        default_factory=MultiChoiceDeltaCollector
+    )
 
     # Response/Error state management
     @property
@@ -211,4 +235,3 @@ class RequestContext:
         """Set successful response and clear any error."""
         self.response = response
         self.error = None
-

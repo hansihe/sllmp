@@ -25,11 +25,13 @@ class TestBudgetLimit:
 
     def test_negative_limit_raises_error(self):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="Input should be greater than 0"):
             BudgetLimit(limit=-1.0, window="1d")
 
     def test_zero_limit_raises_error(self):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="Input should be greater than 0"):
             BudgetLimit(limit=0.0, window="1d")
 
@@ -47,11 +49,13 @@ class TestRateLimit:
 
     def test_negative_rate_raises_error(self):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="Input should be greater than 0"):
             RateLimit(per_minute=-1)
 
     def test_zero_rate_raises_error(self):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="Input should be greater than 0"):
             RateLimit(per_minute=0)
 
@@ -65,7 +69,7 @@ class TestConstraint:
             dimensions=["user_id"],
             budget_limit=BudgetLimit(limit=50.0, window="1d"),
             rate_limit=None,
-            description="Daily budget per user"
+            description="Daily budget per user",
         )
         assert constraint.name == "User Budget"
         assert constraint.dimensions == ["user_id"]
@@ -76,7 +80,7 @@ class TestConstraint:
             dimensions=["user_id"],
             budget_limit=None,
             rate_limit=RateLimit(per_minute=10),
-            description="Rate limit per user"
+            description="Rate limit per user",
         )
         assert constraint.rate_limit.per_minute == 10
 
@@ -86,7 +90,7 @@ class TestConstraint:
             dimensions=["user_id"],
             budget_limit=BudgetLimit(limit=10.0, window="1d"),
             rate_limit=RateLimit(per_minute=5),
-            description="Both limits"
+            description="Both limits",
         )
         assert constraint.budget_limit.limit == 10.0
         assert constraint.rate_limit.per_minute == 5
@@ -98,7 +102,7 @@ class TestConstraint:
                 dimensions=["invalid_dim"],
                 budget_limit=BudgetLimit(limit=10.0, window="1d"),
                 rate_limit=None,
-                description="Invalid dimension"
+                description="Invalid dimension",
             )
 
     def test_duplicate_dimensions_raise_error(self):
@@ -108,17 +112,19 @@ class TestConstraint:
                 dimensions=["user_id", "user_id"],
                 budget_limit=BudgetLimit(limit=10.0, window="1d"),
                 rate_limit=None,
-                description="Duplicate dimensions"
+                description="Duplicate dimensions",
             )
 
     def test_no_limits_raises_error(self):
-        with pytest.raises(ValueError, match="Either budget or rate limit must be specified"):
+        with pytest.raises(
+            ValueError, match="Either budget or rate limit must be specified"
+        ):
             Constraint(
                 name="No Limits",
                 dimensions=["user_id"],
                 budget_limit=None,
                 rate_limit=None,
-                description="No limits"
+                description="No limits",
             )
 
 

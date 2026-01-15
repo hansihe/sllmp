@@ -1,6 +1,10 @@
 from typing import Optional, List, Dict, Any, Sequence, Literal
 from any_llm.types.completion import ChunkChoice, Choice, ChatCompletionMessage
-from openai.types.chat import ChatCompletionMessageToolCall, ChatCompletionMessageToolCallUnion
+from openai.types.chat import (
+    ChatCompletionMessageToolCall,
+    ChatCompletionMessageToolCallUnion,
+)
+
 
 class DeltaCollector:
     """
@@ -15,7 +19,9 @@ class DeltaCollector:
         self.role: Optional[str] = None
         self.function_call: Optional[Dict[str, Any]] = None
         self.tool_calls: List[Dict[str, Any]] = []
-        self.finish_reason: Optional[Literal['stop', 'length', 'tool_calls', 'content_filter', 'function_call']] = None
+        self.finish_reason: Optional[
+            Literal["stop", "length", "tool_calls", "content_filter", "function_call"]
+        ] = None
 
     def accumulate(self, chunk_choice: ChunkChoice) -> None:
         """
@@ -43,12 +49,12 @@ class DeltaCollector:
                 self.function_call = {}
 
             if delta.function_call.name:
-                self.function_call['name'] = delta.function_call.name
+                self.function_call["name"] = delta.function_call.name
 
             if delta.function_call.arguments:
-                if 'arguments' not in self.function_call:
-                    self.function_call['arguments'] = ''
-                self.function_call['arguments'] += delta.function_call.arguments
+                if "arguments" not in self.function_call:
+                    self.function_call["arguments"] = ""
+                self.function_call["arguments"] += delta.function_call.arguments
 
         # Handle tool calls if present
         if delta.tool_calls:
@@ -60,23 +66,23 @@ class DeltaCollector:
                 tool_call = self.tool_calls[tool_call_delta.index]
 
                 if tool_call_delta.id:
-                    tool_call['id'] = tool_call_delta.id
+                    tool_call["id"] = tool_call_delta.id
 
                 if tool_call_delta.type:
-                    tool_call['type'] = tool_call_delta.type
+                    tool_call["type"] = tool_call_delta.type
 
                 if tool_call_delta.function:
-                    if 'function' not in tool_call:
-                        tool_call['function'] = {}
+                    if "function" not in tool_call:
+                        tool_call["function"] = {}
 
                     func = tool_call_delta.function
                     if func.name:
-                        tool_call['function']['name'] = func.name
+                        tool_call["function"]["name"] = func.name
 
                     if func.arguments:
-                        if 'arguments' not in tool_call['function']:
-                            tool_call['function']['arguments'] = ''
-                        tool_call['function']['arguments'] += func.arguments
+                        if "arguments" not in tool_call["function"]:
+                            tool_call["function"]["arguments"] = ""
+                        tool_call["function"]["arguments"] += func.arguments
 
         # Set finish reason (usually in last chunk)
         if chunk_choice.finish_reason:
@@ -84,7 +90,7 @@ class DeltaCollector:
 
     def get_content(self) -> str:
         """Get the accumulated content as a single string."""
-        return ''.join(self.content_parts)
+        return "".join(self.content_parts)
 
     def get_role(self) -> Optional[str]:
         """Get the message role."""
@@ -103,9 +109,9 @@ class DeltaCollector:
 
             # Convert dict to proper tool call object
             tool_call = ChatCompletionMessageToolCall(
-                id=call_dict.get('id', ''),
-                type=call_dict.get('type', 'function'),
-                function=call_dict.get('function', {})
+                id=call_dict.get("id", ""),
+                type=call_dict.get("type", "function"),
+                function=call_dict.get("function", {}),
             )
             result.append(tool_call)
 
@@ -133,8 +139,7 @@ class DeltaCollector:
         assert self.role == "assistant"
 
         message = ChatCompletionMessage(
-            role="assistant",
-            content=self.get_content() or None
+            role="assistant", content=self.get_content() or None
         )
 
         # Add tool calls if present
@@ -143,11 +148,8 @@ class DeltaCollector:
 
         assert self.finish_reason is not None
 
-        return Choice(
-            index=index,
-            message=message,
-            finish_reason=self.finish_reason
-        )
+        return Choice(index=index, message=message, finish_reason=self.finish_reason)
+
 
 class MultiChoiceDeltaCollector:
     """
@@ -189,7 +191,10 @@ class MultiChoiceDeltaCollector:
 
     def get_all_content(self) -> Dict[int, str]:
         """Get accumulated content for all choice indices."""
-        return {index: collector.get_content() for index, collector in self.collectors.items()}
+        return {
+            index: collector.get_content()
+            for index, collector in self.collectors.items()
+        }
 
     def get_choice_indices(self) -> List[int]:
         """Get all choice indices that have been encountered."""
@@ -211,7 +216,11 @@ class MultiChoiceDeltaCollector:
 
     def get_completed_indices(self) -> List[int]:
         """Get indices of all completed choices."""
-        return [index for index, collector in self.collectors.items() if collector.is_complete()]
+        return [
+            index
+            for index, collector in self.collectors.items()
+            if collector.is_complete()
+        ]
 
     def to_choice(self, index: int) -> Optional[Choice]:
         """

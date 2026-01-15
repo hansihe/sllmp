@@ -20,7 +20,7 @@ from sllmp.error import (
     AuthenticationError,
     ValidationError,
     ContentPolicyError,
-    ModelNotFoundError
+    ModelNotFoundError,
 )
 from sllmp.context import NCompletionParams
 
@@ -31,7 +31,7 @@ def mock_completion_params():
     return NCompletionParams(
         model_id="openai:gpt-3.5-turbo",
         messages=[{"role": "user", "content": "Hello"}],
-        metadata={}
+        metadata={},
     )
 
 
@@ -41,17 +41,21 @@ def mock_context(mock_completion_params):
     ctx = RequestContext(
         original_request=mock_completion_params,
         request=mock_completion_params,
-        pipeline=Pipeline()
+        pipeline=Pipeline(),
     )
     return ctx
 
 
 class TestRetryMiddleware:
-
     def test_retryable_error_detection(self):
         """Test that retryable errors are correctly identified."""
         # Retryable errors
-        retryable_errors = {ProviderRateLimitError, NetworkError, ServiceUnavailableError, InternalError}
+        retryable_errors = {
+            ProviderRateLimitError,
+            NetworkError,
+            ServiceUnavailableError,
+            InternalError,
+        }
 
         rate_limit_error = ProviderRateLimitError("Rate limited", "req_123", "openai")
         network_error = NetworkError("Connection failed", "req_123", "openai")
@@ -65,7 +69,12 @@ class TestRetryMiddleware:
 
     def test_non_retryable_error_detection(self):
         """Test that non-retryable errors are correctly identified."""
-        retryable_errors = {ProviderRateLimitError, NetworkError, ServiceUnavailableError, InternalError}
+        retryable_errors = {
+            ProviderRateLimitError,
+            NetworkError,
+            ServiceUnavailableError,
+            InternalError,
+        }
 
         auth_error = AuthenticationError("Bad API key", "req_123")
         validation_error = ValidationError("Invalid request", "req_123")
@@ -83,8 +92,8 @@ class TestRetryMiddleware:
         middleware(mock_context)
 
         # Check that retry state is stored in both metadata and state
-        assert 'retry_state' in mock_context.state
-        retry_state = mock_context.state['retry_state']
+        assert "retry_state" in mock_context.state
+        retry_state = mock_context.state["retry_state"]
         assert retry_state.max_attempts == 5
         assert retry_state.base_delay == 2.0
         assert retry_state.max_delay == 60.0
@@ -114,16 +123,20 @@ class TestRetryMiddleware:
         # Error should still be present (no retry)
         assert mock_context.has_error
         assert isinstance(mock_context.error, AuthenticationError)
-        assert mock_context.state['retry_state'].attempts == 0
+        assert mock_context.state["retry_state"].attempts == 0
 
     @pytest.mark.asyncio
     async def test_retryable_error_with_retry(self, mock_context):
         """Test that retryable errors trigger retry logic."""
-        middleware = retry_middleware(max_attempts=3, base_delay=0.1)  # Fast for testing
+        middleware = retry_middleware(
+            max_attempts=3, base_delay=0.1
+        )  # Fast for testing
         middleware(mock_context)
 
         # Simulate network error
-        network_error = NetworkError("Connection timeout", mock_context.request_id, "openai")
+        network_error = NetworkError(
+            "Connection timeout", mock_context.request_id, "openai"
+        )
         mock_context.error = network_error
         mock_context.response = None
 
@@ -133,8 +146,8 @@ class TestRetryMiddleware:
         # Error should be cleared and pipeline state should be reset for retry
         assert not mock_context.has_error
         assert mock_context.next_pipeline_state == PipelineState.LLM_CALL
-        assert mock_context.state['retry_state'].attempts == 1
-        assert len(mock_context.state['retry_state'].history) == 1
+        assert mock_context.state["retry_state"].attempts == 1
+        assert len(mock_context.state["retry_state"].history) == 1
 
     @pytest.mark.asyncio
     async def test_retry_exhaustion(self, mock_context):
@@ -144,7 +157,9 @@ class TestRetryMiddleware:
 
         # Simulate retries until exhaustion
         for attempt in range(3):  # One more than max_attempts
-            service_error = ServiceUnavailableError("Service down", mock_context.request_id, "openai")
+            service_error = ServiceUnavailableError(
+                "Service down", mock_context.request_id, "openai"
+            )
             mock_context.error = service_error
             mock_context.response = None
 
@@ -157,16 +172,13 @@ class TestRetryMiddleware:
         # After exhaustion, error should remain
         assert mock_context.has_error
         assert isinstance(mock_context.error, ServiceUnavailableError)
-        assert mock_context.state['retry_state'].attempts == 2  # Max attempts reached
+        assert mock_context.state["retry_state"].attempts == 2  # Max attempts reached
 
     @pytest.mark.asyncio
     async def test_exponential_backoff_timing(self, mock_context):
         """Test that exponential backoff delays are applied correctly."""
         middleware = retry_middleware(
-            max_attempts=3,
-            base_delay=0.1,
-            backoff_multiplier=2.0,
-            max_delay=1.0
+            max_attempts=3, base_delay=0.1, backoff_multiplier=2.0, max_delay=1.0
         )
         middleware(mock_context)
 
@@ -175,9 +187,11 @@ class TestRetryMiddleware:
         async def mock_sleep(delay):
             delays.append(delay)
 
-        with patch('asyncio.sleep', side_effect=mock_sleep):
+        with patch("asyncio.sleep", side_effect=mock_sleep):
             for attempt in range(2):  # Two retries
-                rate_limit_error = ProviderRateLimitError("Rate limited", mock_context.request_id, "openai")
+                rate_limit_error = ProviderRateLimitError(
+                    "Rate limited", mock_context.request_id, "openai"
+                )
                 mock_context.error = rate_limit_error
                 mock_context.response = None
 
@@ -199,13 +213,13 @@ class TestRetryMiddleware:
         async def mock_sleep(delay):
             delays.append(delay)
 
-        with patch('asyncio.sleep', side_effect=mock_sleep):
+        with patch("asyncio.sleep", side_effect=mock_sleep):
             # Rate limit error with retry_after
             rate_limit_error = ProviderRateLimitError(
                 "Rate limited",
                 mock_context.request_id,
                 "openai",
-                retry_after=5  # 5 seconds
+                retry_after=5,  # 5 seconds
             )
             mock_context.error = rate_limit_error
             mock_context.response = None
@@ -223,7 +237,7 @@ class TestRetryMiddleware:
             max_attempts=10,
             base_delay=1.0,
             backoff_multiplier=10.0,  # Very aggressive multiplier
-            max_delay=5.0  # Low cap
+            max_delay=5.0,  # Low cap
         )
         middleware(mock_context)
 
@@ -232,9 +246,11 @@ class TestRetryMiddleware:
         async def mock_sleep(delay):
             delays.append(delay)
 
-        with patch('asyncio.sleep', side_effect=mock_sleep):
+        with patch("asyncio.sleep", side_effect=mock_sleep):
             for attempt in range(5):
-                network_error = NetworkError("Connection failed", mock_context.request_id, "openai")
+                network_error = NetworkError(
+                    "Connection failed", mock_context.request_id, "openai"
+                )
                 mock_context.error = network_error
                 mock_context.response = None
 
@@ -249,14 +265,13 @@ class TestRetryMiddleware:
         """Test retry middleware with custom retryable error set."""
         # Only retry rate limit errors
         custom_retryable = {ProviderRateLimitError}
-        middleware = retry_middleware(
-            max_attempts=3,
-            retryable_errors=custom_retryable
-        )
+        middleware = retry_middleware(max_attempts=3, retryable_errors=custom_retryable)
         middleware(mock_context)
 
         # Network error should not be retried with custom set
-        network_error = NetworkError("Connection failed", mock_context.request_id, "openai")
+        network_error = NetworkError(
+            "Connection failed", mock_context.request_id, "openai"
+        )
         mock_context.error = network_error
         mock_context.response = None
 
@@ -265,12 +280,14 @@ class TestRetryMiddleware:
         # Error should remain (no retry)
         assert mock_context.has_error
         assert isinstance(mock_context.error, NetworkError)
-        assert mock_context.state['retry_state'].attempts == 0
+        assert mock_context.state["retry_state"].attempts == 0
 
         # Rate limit error should be retried
         mock_context.error = None  # Clear error
         mock_context.response = None
-        rate_limit_error = ProviderRateLimitError("Rate limited", mock_context.request_id, "openai")
+        rate_limit_error = ProviderRateLimitError(
+            "Rate limited", mock_context.request_id, "openai"
+        )
         mock_context.error = rate_limit_error
 
         await mock_context.pipeline.error.emit(mock_context)
@@ -278,7 +295,7 @@ class TestRetryMiddleware:
         # Should have been retried
         assert not mock_context.has_error
         assert mock_context.next_pipeline_state == PipelineState.LLM_CALL
-        assert mock_context.state['retry_state'].attempts == 1
+        assert mock_context.state["retry_state"].attempts == 1
 
 
 class TestRetryIntegration:
@@ -294,30 +311,34 @@ class TestRetryIntegration:
         error_messages = ["First failure", "Second failure"]
 
         for i, message in enumerate(error_messages):
-            service_error = ServiceUnavailableError(message, mock_context.request_id, "openai")
+            service_error = ServiceUnavailableError(
+                message, mock_context.request_id, "openai"
+            )
             mock_context.error = service_error
             mock_context.response = None
 
             await mock_context.pipeline.error.emit(mock_context)
 
         # Check retry history
-        history = mock_context.state['retry_state'].history
+        history = mock_context.state["retry_state"].history
         assert len(history) == 2
 
-        assert history[0]['attempt'] == 1
-        assert history[0]['error_type'] == 'ServiceUnavailableError'
-        assert history[0]['error_message'] == "First failure"
+        assert history[0]["attempt"] == 1
+        assert history[0]["error_type"] == "ServiceUnavailableError"
+        assert history[0]["error_message"] == "First failure"
 
-        assert history[1]['attempt'] == 2
-        assert history[1]['error_type'] == 'ServiceUnavailableError'
-        assert history[1]['error_message'] == "Second failure"
+        assert history[1]["attempt"] == 2
+        assert history[1]["error_type"] == "ServiceUnavailableError"
+        assert history[1]["error_message"] == "Second failure"
 
     @pytest.mark.asyncio
     async def test_no_retry_without_config(self, mock_context):
         """Test that errors pass through when no retry config is present."""
         # Don't apply retry middleware
 
-        network_error = NetworkError("Connection failed", mock_context.request_id, "openai")
+        network_error = NetworkError(
+            "Connection failed", mock_context.request_id, "openai"
+        )
         mock_context.error = network_error
         mock_context.response = None
 
@@ -327,4 +348,4 @@ class TestRetryIntegration:
         # Error should remain unchanged
         assert mock_context.has_error
         assert isinstance(mock_context.error, NetworkError)
-        assert 'retry_state' not in mock_context.state
+        assert "retry_state" not in mock_context.state

@@ -1,4 +1,8 @@
-from any_llm.types.completion import ChatCompletion, ChatCompletionMessage, CompletionParams
+from any_llm.types.completion import (
+    ChatCompletion,
+    ChatCompletionMessage,
+    CompletionParams,
+)
 from typing import Dict, Any
 
 from . import _has_langfuse
@@ -12,8 +16,7 @@ if _has_langfuse:
             completion = _extract_chat_response(response.choices[0].message)
         elif len(response.choices) > 1:
             completion = [
-                _extract_chat_response(choice.message)
-                for choice in response.choices
+                _extract_chat_response(choice.message) for choice in response.choices
             ]
         return completion
 
@@ -29,14 +32,22 @@ if _has_langfuse:
             response.update({"function_call": kwargs.function_call.model_dump()})
 
         if kwargs.tool_calls is not None:
-            response.update({"tool_calls": [tool_call.model_dump() for tool_call in kwargs.tool_calls]})
+            response.update(
+                {
+                    "tool_calls": [
+                        tool_call.model_dump() for tool_call in kwargs.tool_calls
+                    ]
+                }
+            )
 
         if kwargs.audio is not None:
             audio = kwargs.audio.__dict__
 
             if "data" in audio and audio["data"] is not None:
                 base64_data_uri = f"data:audio/{audio.get('format', 'wav')};base64,{audio.get('data', None)}"
-                audio["data"] = langfuse.media.LangfuseMedia(base64_data_uri=base64_data_uri)
+                audio["data"] = langfuse.media.LangfuseMedia(
+                    base64_data_uri=base64_data_uri
+                )
 
         response.update(
             {
@@ -94,7 +105,9 @@ if _has_langfuse:
                         {
                             "type": "input_audio",
                             "input_audio": {
-                                "data": langfuse.media.LangfuseMedia(base64_data_uri=base64_data_uri),
+                                "data": langfuse.media.LangfuseMedia(
+                                    base64_data_uri=base64_data_uri
+                                ),
                                 "format": format,
                             },
                         }

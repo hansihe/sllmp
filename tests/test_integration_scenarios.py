@@ -97,9 +97,10 @@ async def custom_pipeline_client(integration_mock_llm):
             async def filter_content(ctx: RequestContext):
                 if ctx.request.messages:
                     last_message = ctx.request.messages[-1]
-                    if isinstance(last_message, dict) and "blocked" in last_message.get(
-                        "content", ""
-                    ).lower():
+                    if (
+                        isinstance(last_message, dict)
+                        and "blocked" in last_message.get("content", "").lower()
+                    ):
                         raise ValidationError(
                             "Content blocked by policy", request_id=ctx.request_id
                         )
@@ -129,15 +130,18 @@ class TestConcurrentRequests:
         """Test server handles concurrent requests correctly."""
         request_data = {
             "model": "openai:gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": "Concurrent test"}]
+            "messages": [{"role": "user", "content": "Concurrent test"}],
         }
 
         # Send 5 concurrent requests
         tasks = [
-            basic_client.post("/v1/chat/completions", json={
-                **request_data,
-                "messages": [{"role": "user", "content": f"Concurrent test {i}"}]
-            })
+            basic_client.post(
+                "/v1/chat/completions",
+                json={
+                    **request_data,
+                    "messages": [{"role": "user", "content": f"Concurrent test {i}"}],
+                },
+            )
             for i in range(5)
         ]
 
@@ -160,20 +164,24 @@ class TestMiddlewareIntegration:
         normal_request = {
             "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Normal request"}],
-            "metadata": {"user_id": "normal_user"}
+            "metadata": {"user_id": "normal_user"},
         }
 
-        response = await custom_pipeline_client.post("/v1/chat/completions", json=normal_request)
+        response = await custom_pipeline_client.post(
+            "/v1/chat/completions", json=normal_request
+        )
         assert response.status_code == 200
 
         # Rate limited user should be blocked
         limited_request = {
             "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Normal message"}],
-            "metadata": {"user_id": "rate_limited_user"}
+            "metadata": {"user_id": "rate_limited_user"},
         }
 
-        response = await custom_pipeline_client.post("/v1/chat/completions", json=limited_request)
+        response = await custom_pipeline_client.post(
+            "/v1/chat/completions", json=limited_request
+        )
         assert response.status_code == 429  # Rate limit error
 
         data = response.json()
@@ -185,19 +193,23 @@ class TestMiddlewareIntegration:
         # Normal content should pass
         normal_request = {
             "model": "openai:gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": "Tell me about the weather"}]
+            "messages": [{"role": "user", "content": "Tell me about the weather"}],
         }
 
-        response = await custom_pipeline_client.post("/v1/chat/completions", json=normal_request)
+        response = await custom_pipeline_client.post(
+            "/v1/chat/completions", json=normal_request
+        )
         assert response.status_code == 200
 
         # Blocked content should be rejected
         blocked_request = {
             "model": "openai:gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": "This content should be blocked"}]
+            "messages": [{"role": "user", "content": "This content should be blocked"}],
         }
 
-        response = await custom_pipeline_client.post("/v1/chat/completions", json=blocked_request)
+        response = await custom_pipeline_client.post(
+            "/v1/chat/completions", json=blocked_request
+        )
         assert response.status_code == 422  # Validation error
 
         data = response.json()
@@ -211,10 +223,12 @@ class TestMiddlewareIntegration:
         request_data = {
             "model": "openai:gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "Test middleware chain"}],
-            "metadata": {"user_id": "normal_user"}
+            "metadata": {"user_id": "normal_user"},
         }
 
-        response = await custom_pipeline_client.post("/v1/chat/completions", json=request_data)
+        response = await custom_pipeline_client.post(
+            "/v1/chat/completions", json=request_data
+        )
         assert response.status_code == 200
 
         # Verify response shows middleware processing occurred
@@ -231,13 +245,13 @@ class TestRealWorldScenarios:
         large_context = [
             {"role": "user", "content": "Context message " + "a" * 1000},
             {"role": "assistant", "content": "Response " + "b" * 1000},
-            {"role": "user", "content": "Follow up question with more context " + "c" * 1000}
+            {
+                "role": "user",
+                "content": "Follow up question with more context " + "c" * 1000,
+            },
         ]
 
-        request_data = {
-            "model": "openai:gpt-3.5-turbo",
-            "messages": large_context
-        }
+        request_data = {"model": "openai:gpt-3.5-turbo", "messages": large_context}
 
         response = await basic_client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
@@ -250,19 +264,25 @@ class TestRealWorldScenarios:
         """Test handling of multimodal content in messages."""
         multimodal_request = {
             "model": "openai:gpt-4-vision-preview",
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "What's in this image?"},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA..."}
-                    }
-                ]
-            }]
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What's in this image?"},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA..."
+                            },
+                        },
+                    ],
+                }
+            ],
         }
 
-        response = await basic_client.post("/v1/chat/completions", json=multimodal_request)
+        response = await basic_client.post(
+            "/v1/chat/completions", json=multimodal_request
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -278,10 +298,12 @@ class TestRealWorldScenarios:
             "top_p": 0.9,
             "presence_penalty": 0.1,
             "frequency_penalty": 0.2,
-            "user": "integration_test_user"
+            "user": "integration_test_user",
         }
 
-        response = await basic_client.post("/v1/chat/completions", json=advanced_request)
+        response = await basic_client.post(
+            "/v1/chat/completions", json=advanced_request
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -293,7 +315,7 @@ class TestRealWorldScenarios:
         request_data = {
             "model": "openai:gpt-4",
             "messages": [{"role": "user", "content": "Long story"}],
-            "stream": True
+            "stream": True,
         }
 
         # Start streaming request
@@ -311,13 +333,16 @@ class TestCustomServerConfiguration:
 
     async def test_server_with_retry_middleware(self):
         """Test server configured with retry middleware."""
+
         def create_retry_pipeline():
             pipeline = Pipeline()
-            pipeline.setup.connect(retry_middleware(
-                max_attempts=2,
-                base_delay=0.1,  # Fast for testing
-                max_delay=1.0
-            ))
+            pipeline.setup.connect(
+                retry_middleware(
+                    max_attempts=2,
+                    base_delay=0.1,  # Fast for testing
+                    max_delay=1.0,
+                )
+            )
             return pipeline
 
         server = SimpleProxyServer(pipeline_factory=create_retry_pipeline)
@@ -337,12 +362,19 @@ class TestCustomServerConfiguration:
                 completion_id="retry-test",
             )
 
-        with patch('sllmp.pipeline.any_llm.acompletion', side_effect=failing_then_success):
-            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
-                response = await client.post("/v1/chat/completions", json={
-                    "model": "openai:gpt-3.5-turbo",
-                    "messages": [{"role": "user", "content": "Test retry"}]
-                })
+        with patch(
+            "sllmp.pipeline.any_llm.acompletion", side_effect=failing_then_success
+        ):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+            ) as client:
+                response = await client.post(
+                    "/v1/chat/completions",
+                    json={
+                        "model": "openai:gpt-3.5-turbo",
+                        "messages": [{"role": "user", "content": "Test retry"}],
+                    },
+                )
 
                 assert response.status_code == 200
                 data = response.json()

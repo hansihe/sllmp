@@ -15,6 +15,7 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.containers]
 
 try:
     from sllmp.middleware.limit.limit_redis import RedisLimitBackend
+
     redis_available = True
 except ImportError:
     redis_available = False
@@ -61,14 +62,14 @@ def redis_url(redis_container):
 async def redis_backend(redis_url):
     """Redis backend fixture that cleans up after tests."""
     backend = RedisLimitBackend(
-        redis_url=redis_url,
-        key_prefix="test_container:",
-        rate_key_ttl=10
+        redis_url=redis_url, key_prefix="test_container:", rate_key_ttl=10
     )
 
     health = await backend.health_check()
     if health["status"] != "healthy":
-        pytest.skip(f"Redis container not healthy: {health.get('error', 'Unknown error')}")
+        pytest.skip(
+            f"Redis container not healthy: {health.get('error', 'Unknown error')}"
+        )
 
     yield backend
 
@@ -171,7 +172,10 @@ class TestRedisLimitBackendWithContainers:
         assert details["window"] == window
         assert details["usage"] == 12.5
         assert details["ttl_seconds"] > 0
-        assert details["redis_key"] == f"{redis_backend.key_prefix}budget:{constraint_key}:{window}"
+        assert (
+            details["redis_key"]
+            == f"{redis_backend.key_prefix}budget:{constraint_key}:{window}"
+        )
 
     async def test_usage_reset(self, redis_backend):
         """Test resetting usage."""
@@ -213,7 +217,7 @@ class TestRedisLimitBackendWithContainers:
             redis_url=redis_backend.redis_url,
             key_prefix="test_expire:",
             budget_key_ttl=1,
-            rate_key_ttl=1
+            rate_key_ttl=1,
         )
 
         try:
@@ -266,17 +270,13 @@ class TestRedisLimitBackendWithContainers:
         assert usage == 7.0
 
 
-
-
 class TestRedisContainerConfiguration:
     """Test various Redis configuration options with containers."""
 
     async def test_custom_key_prefix(self, redis_url):
         """Test custom key prefix functionality."""
         backend = RedisLimitBackend(
-            redis_url=redis_url,
-            key_prefix="custom_test:",
-            budget_key_ttl=3600
+            redis_url=redis_url, key_prefix="custom_test:", budget_key_ttl=3600
         )
 
         try:

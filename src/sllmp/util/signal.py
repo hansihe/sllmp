@@ -1,14 +1,25 @@
 import inspect
-from typing import Callable, Union, List, Optional, TypeVar, Generic, Awaitable, cast, Any
+from typing import (
+    Callable,
+    Union,
+    List,
+    Optional,
+    TypeVar,
+    Generic,
+    Awaitable,
+    cast,
+    Any,
+)
 from typing_extensions import ParamSpec
 from enum import Enum
 from dataclasses import dataclass, field
 import time
 
 # Type parameters
-P = ParamSpec('P')  # Parameters for hooks/callbacks
-T = TypeVar('T')    # Return type for hooks
-R = TypeVar('R')    # Post-hook data type
+P = ParamSpec("P")  # Parameters for hooks/callbacks
+T = TypeVar("T")  # Return type for hooks
+R = TypeVar("R")  # Post-hook data type
+
 
 class SignalState(Enum):
     OPEN = "open"
@@ -18,11 +29,13 @@ class SignalState(Enum):
 @dataclass
 class CallbackResult(Generic[T]):
     """Result of a single callback execution."""
+
     callback: Callable[..., Union[T, Awaitable[T]]]
     success: bool
     return_value: Optional[T] = None
     exception: Optional[Exception] = None
     execution_time: Optional[float] = None
+
 
 class Hooks(Generic[P, R]):
     """A reusable hooks container for pre/post execution hooks.
@@ -36,9 +49,11 @@ class Hooks(Generic[P, R]):
         self._pre_hooks: List[Callable[P, Union[Any, Awaitable[Any]]]] = []
         self._post_hooks: List[Callable[[R], Union[Any, Awaitable[Any]]]] = []
 
-    def add(self,
-            pre_hook: Optional[Callable[P, Union[Any, Awaitable[Any]]]] = None,
-            post_hook: Optional[Callable[[R], Union[Any, Awaitable[Any]]]] = None) -> None:
+    def add(
+        self,
+        pre_hook: Optional[Callable[P, Union[Any, Awaitable[Any]]]] = None,
+        post_hook: Optional[Callable[[R], Union[Any, Awaitable[Any]]]] = None,
+    ) -> None:
         """Add pre and/or post execution hooks.
 
         Args:
@@ -117,11 +132,14 @@ class Hooks(Generic[P, R]):
         """Return True if any hooks are registered."""
         return len(self._pre_hooks) > 0 or len(self._post_hooks) > 0
 
-S = TypeVar('S')    # Signal callback return type
+
+S = TypeVar("S")  # Signal callback return type
+
 
 @dataclass
 class SignalExecutionResult(Generic[T]):
     """Result of signal emission containing detailed execution information."""
+
     completed: bool  # True if all callbacks executed, False if halted
     halted_by: Optional[Callable[..., Union[T, Awaitable[T]]]] = None
     callback_results: List[CallbackResult[T]] = field(default_factory=list)
@@ -140,7 +158,8 @@ class SignalExecutionResult(Generic[T]):
     def return_values(self) -> List[T]:
         """List of return values from all executed callbacks."""
         return [
-            result.return_value for result in self.callback_results
+            result.return_value
+            for result in self.callback_results
             if result.success and result.return_value is not None
         ]
 
@@ -148,9 +167,11 @@ class SignalExecutionResult(Generic[T]):
     def exceptions(self) -> List[Exception]:
         """List of all exceptions raised by callbacks."""
         return [
-            result.exception for result in self.callback_results
+            result.exception
+            for result in self.callback_results
             if result.exception is not None
         ]
+
 
 class Signal(Generic[P, S]):
     """A typed signal that can emit events to connected callbacks.
@@ -219,7 +240,6 @@ class Signal(Generic[P, S]):
                 return True
             return False
 
-
     async def emit(self, *args: P.args, **kwargs: P.kwargs) -> SignalExecutionResult[S]:
         """Emit the signal, calling all connected callbacks.
 
@@ -234,7 +254,9 @@ class Signal(Generic[P, S]):
             RuntimeError: If signal is already being executed.
         """
         if self._executing:
-            raise RuntimeError("Signal is already being executed (recursive emission not allowed)")
+            raise RuntimeError(
+                "Signal is already being executed (recursive emission not allowed)"
+            )
 
         start_time = time.perf_counter()
         result: SignalExecutionResult[S] = SignalExecutionResult(completed=False)
@@ -251,7 +273,9 @@ class Signal(Generic[P, S]):
             while callback_index < len(all_callbacks):
                 callback = all_callbacks[callback_index]
                 callback_start = time.perf_counter()
-                callback_result: CallbackResult[S] = CallbackResult(callback=callback, success=False)
+                callback_result: CallbackResult[S] = CallbackResult(
+                    callback=callback, success=False
+                )
 
                 try:
                     if inspect.iscoroutinefunction(callback):
@@ -269,7 +293,9 @@ class Signal(Generic[P, S]):
                     result.callbacks_executed += 1
 
                 finally:
-                    callback_result.execution_time = time.perf_counter() - callback_start
+                    callback_result.execution_time = (
+                        time.perf_counter() - callback_start
+                    )
                     result.callback_results.append(callback_result)
 
                 if self._pending_callbacks:
@@ -300,7 +326,9 @@ class Signal(Generic[P, S]):
     def clear_all(self) -> None:
         """Remove all callbacks and hooks from the signal."""
         if self._executing:
-            raise RuntimeError("Cannot clear callbacks and hooks while signal is executing")
+            raise RuntimeError(
+                "Cannot clear callbacks and hooks while signal is executing"
+            )
         self._callbacks.clear()
         self.hooks.clear()
 

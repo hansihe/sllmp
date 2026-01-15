@@ -2,7 +2,7 @@
 
 All notable changes to SLLMP will be documented in this file.
 
-## [Unreleased]
+## 0.2.0 - 2026-01-16
 
 ### Added
 
@@ -25,3 +25,4 @@ All notable changes to SLLMP will be documented in this file.
 
 - **Limit Middleware Error Handling**: Catches exceptions when checking budget usage and allows requests through on backend failures (fail-open behavior)
 - **Code Style**: Consistent double quote usage throughout limit middleware
+- **Code Formatting**: Apply `ruff format` across codebase

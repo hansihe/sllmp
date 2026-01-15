@@ -16,47 +16,53 @@ class ContentGuardrailMiddleware(Middleware):
     the stream immediately when violations are detected.
     """
 
-    def __init__(self, policies: Optional[List[str]] = None, check_interval: int = 3, **config):
+    def __init__(
+        self, policies: Optional[List[str]] = None, check_interval: int = 3, **config
+    ):
         super().__init__(**config)
         self.policies = policies or ["inappropriate", "pii"]
         self.check_interval = check_interval
 
-    async def on_response_update(self, ctx: RequestContext, accumulated_content: str) -> RequestContext:
+    async def on_response_update(
+        self, ctx: RequestContext, accumulated_content: str
+    ) -> RequestContext:
         """Check accumulated content for policy violations during streaming."""
 
         violations = self._check_policies(accumulated_content)
         if violations:
             # Log the violation
-            ctx.metadata['guardrail_violation'] = {
-                'violations': violations,
-                'content_length': len(accumulated_content),
-                'chunk_count': ctx.chunk_count
+            ctx.metadata["guardrail_violation"] = {
+                "violations": violations,
+                "content_length": len(accumulated_content),
+                "chunk_count": ctx.chunk_count,
             }
 
             # Halt the stream
             self.halt_with_error(
                 ctx,
                 f"Content policy violation detected: {', '.join(violations)}",
-                "content_policy_error"
+                "content_policy_error",
             )
 
         return ctx
 
-    async def on_response_complete(self, ctx: RequestContext, final_content: str) -> RequestContext:
+    async def on_response_complete(
+        self, ctx: RequestContext, final_content: str
+    ) -> RequestContext:
         """Final check for non-streaming responses or end-of-stream validation."""
 
         violations = self._check_policies(final_content)
         if violations:
-            ctx.metadata['guardrail_violation'] = {
-                'violations': violations,
-                'content_length': len(final_content),
-                'final_check': True
+            ctx.metadata["guardrail_violation"] = {
+                "violations": violations,
+                "content_length": len(final_content),
+                "final_check": True,
             }
 
             self.halt_with_error(
                 ctx,
                 f"Final content check failed: {', '.join(violations)}",
-                "content_policy_error"
+                "content_policy_error",
             )
 
         return ctx
@@ -79,7 +85,7 @@ class ContentGuardrailMiddleware(Middleware):
             inappropriate_patterns = [
                 "inappropriate content",
                 "explicit material",
-                "harmful content"
+                "harmful content",
             ]
             if any(pattern in content_lower for pattern in inappropriate_patterns):
                 violations.append("inappropriate_content")
@@ -110,34 +116,36 @@ class ResponseValidatorMiddleware(Middleware):
         self.min_quality_score = min_quality_score
         self.min_length = min_length
 
-    async def on_response_complete(self, ctx: RequestContext, final_content: str) -> RequestContext:
+    async def on_response_complete(
+        self, ctx: RequestContext, final_content: str
+    ) -> RequestContext:
         """Validate the complete response for quality and completeness."""
 
         validation_results = {
-            'content_length': len(final_content),
-            'quality_score': 0.0,
-            'issues': []
+            "content_length": len(final_content),
+            "quality_score": 0.0,
+            "issues": [],
         }
 
         # Basic length check
         if len(final_content) < self.min_length:
-            validation_results['issues'].append('response_too_short')
+            validation_results["issues"].append("response_too_short")
 
         # TODO: Implement sophisticated quality scoring
         quality_score = self._assess_response_quality(final_content)
-        validation_results['quality_score'] = quality_score
+        validation_results["quality_score"] = quality_score
 
         if quality_score < self.min_quality_score:
-            validation_results['issues'].append('quality_too_low')
+            validation_results["issues"].append("quality_too_low")
 
         # Store validation results
-        ctx.metadata['response_validation'] = validation_results
+        ctx.metadata["response_validation"] = validation_results
 
         # If validation fails, we could either halt or mark for retry
-        if validation_results['issues']:
+        if validation_results["issues"]:
             # For now, just log the issues but don't halt
             # TODO: Make this configurable - halt vs retry vs log
-            ctx.metadata['validation_failed'] = True
+            ctx.metadata["validation_failed"] = True
 
         return ctx
 
@@ -160,7 +168,7 @@ class ResponseValidatorMiddleware(Middleware):
             score += 0.2
 
         # Sentence structure bonus
-        sentence_count = len([s for s in content.split('.') if s.strip()])
+        sentence_count = len([s for s in content.split(".") if s.strip()])
         if 2 <= sentence_count <= 10:
             score += 0.2
 

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import redis.asyncio
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -43,7 +44,7 @@ if REDIS_AVAILABLE:
             redis_kwargs: Dict[str, Any] = {},
             key_prefix: str = "llm_limit:",
             budget_key_ttl: Optional[int] = None,
-            rate_key_ttl: int = 120  # 2 minutes for rate limiting cleanup
+            rate_key_ttl: int = 120,  # 2 minutes for rate limiting cleanup
         ):
             """
             Initialize Redis backend.
@@ -64,16 +65,18 @@ if REDIS_AVAILABLE:
             self.budget_key_ttl = budget_key_ttl
             self.rate_key_ttl = rate_key_ttl
             self.redis_kwargs = redis_kwargs
-            self._redis: Optional['Redis'] = None
+            self._redis: Optional["Redis"] = None
 
-        async def _get_redis(self) -> 'Redis':
+        async def _get_redis(self) -> "Redis":
             """Get Redis connection, creating if needed."""
             if not REDIS_AVAILABLE:
                 raise ImportError(
                     "Redis is not installed. Install with: pip install redis"
                 )
             if self._redis is None:
-                self._redis = from_url(self.redis_url, decode_responses=True, **self.redis_kwargs)
+                self._redis = from_url(
+                    self.redis_url, decode_responses=True, **self.redis_kwargs
+                )
             return self._redis
 
         async def close(self) -> None:
@@ -92,12 +95,7 @@ if REDIS_AVAILABLE:
 
         def _get_window_ttl(self, window: str) -> int:
             """Get TTL in seconds for a time window."""
-            window_to_seconds = {
-                "1h": 3600,
-                "1d": 86400,
-                "7d": 604800,
-                "30d": 2592000
-            }
+            window_to_seconds = {"1h": 3600, "1d": 86400, "7d": 604800, "30d": 2592000}
             return window_to_seconds.get(window, 86400)  # Default to 1 day
 
         async def get_usage(self, constraint_key: str, window: str) -> float:
@@ -116,7 +114,9 @@ if REDIS_AVAILABLE:
                 logger.exception(f"Failed to get budget usage for {constraint_key}")
                 return 0.0  # Fail open
 
-        async def increment_usage(self, constraint_key: str, amount: float, window: str) -> None:
+        async def increment_usage(
+            self, constraint_key: str, amount: float, window: str
+        ) -> None:
             """Increment usage by the specified amount."""
             try:
                 r = await self._get_redis()
@@ -133,7 +133,9 @@ if REDIS_AVAILABLE:
                     await pipe.execute()
 
             except Exception:
-                logger.exception(f"Failed to increment budget usage for {constraint_key}")
+                logger.exception(
+                    f"Failed to increment budget usage for {constraint_key}"
+                )
                 # Don't raise - this is tracking, not enforcement
 
         async def get_rate_usage(self, constraint_key: str) -> int:
@@ -193,7 +195,7 @@ if REDIS_AVAILABLE:
                     "window": window,
                     "usage": usage,
                     "ttl_seconds": ttl,
-                    "redis_key": budget_key
+                    "redis_key": budget_key,
                 }
 
             except Exception as e:
@@ -203,7 +205,7 @@ if REDIS_AVAILABLE:
                     "window": window,
                     "usage": 0.0,
                     "ttl_seconds": -1,
-                    "error": str(e)
+                    "error": str(e),
                 }
 
         async def reset_usage(self, constraint_key: str, window: str) -> bool:
@@ -267,22 +269,21 @@ if REDIS_AVAILABLE:
                         "status": "healthy",
                         "redis_url": self.redis_url,
                         "key_prefix": self.key_prefix,
-                        "connection": "ok"
+                        "connection": "ok",
                     }
                 else:
                     return {
                         "status": "unhealthy",
                         "redis_url": self.redis_url,
-                        "error": "Failed to set/get test value"
+                        "error": "Failed to set/get test value",
                     }
 
             except Exception as e:
                 return {
                     "status": "unhealthy",
                     "redis_url": self.redis_url,
-                    "error": str(e)
+                    "error": str(e),
                 }
-
 
     class RedisClusterLimitBackend(BaseLimitBackend):
         """
@@ -296,7 +297,7 @@ if REDIS_AVAILABLE:
             startup_nodes: list,
             key_prefix: str = "llm_limit:",
             budget_key_ttl: Optional[int] = None,
-            rate_key_ttl: int = 120
+            rate_key_ttl: int = 120,
         ):
             """
             Initialize Redis Cluster backend.
@@ -316,14 +317,13 @@ if REDIS_AVAILABLE:
             self.key_prefix = key_prefix
             self.budget_key_ttl = budget_key_ttl
             self.rate_key_ttl = rate_key_ttl
-            self._redis: Optional['RedisCluster'] = None
+            self._redis: Optional["RedisCluster"] = None
 
-        async def _get_redis(self) -> 'RedisCluster':
+        async def _get_redis(self) -> "RedisCluster":
             """Get Redis Cluster connection, creating if needed."""
             if self._redis is None:
                 self._redis = RedisCluster(
-                    startup_nodes=self.startup_nodes,
-                    decode_responses=True
+                    startup_nodes=self.startup_nodes, decode_responses=True
                 )
             return self._redis
 
@@ -344,12 +344,7 @@ if REDIS_AVAILABLE:
             return f"{self.key_prefix}rate:{constraint_key}"
 
         def _get_window_ttl(self, window: str) -> int:
-            window_to_seconds = {
-                "1h": 3600,
-                "1d": 86400,
-                "7d": 604800,
-                "30d": 2592000
-            }
+            window_to_seconds = {"1h": 3600, "1d": 86400, "7d": 604800, "30d": 2592000}
             return window_to_seconds.get(window, 86400)
 
         async def get_usage(self, constraint_key: str, window: str) -> float:
@@ -367,7 +362,9 @@ if REDIS_AVAILABLE:
                 logger.exception(f"Failed to get budget usage for {constraint_key}")
                 return 0.0
 
-        async def increment_usage(self, constraint_key: str, amount: float, window: str) -> None:
+        async def increment_usage(
+            self, constraint_key: str, amount: float, window: str
+        ) -> None:
             try:
                 r = await self._get_redis()
                 budget_key = self._get_budget_key(constraint_key, window)
@@ -381,7 +378,9 @@ if REDIS_AVAILABLE:
                     await pipe.execute()
 
             except Exception:
-                logger.exception(f"Failed to increment budget usage for {constraint_key}")
+                logger.exception(
+                    f"Failed to increment budget usage for {constraint_key}"
+                )
 
         async def get_rate_usage(self, constraint_key: str) -> int:
             try:
@@ -428,18 +427,18 @@ if REDIS_AVAILABLE:
                         "status": "healthy",
                         "startup_nodes": self.startup_nodes,
                         "key_prefix": self.key_prefix,
-                        "connection": "ok"
+                        "connection": "ok",
                     }
                 else:
                     return {
                         "status": "unhealthy",
                         "startup_nodes": self.startup_nodes,
-                        "error": "Failed to set/get test value"
+                        "error": "Failed to set/get test value",
                     }
 
             except Exception as e:
                 return {
                     "status": "unhealthy",
                     "startup_nodes": self.startup_nodes,
-                    "error": str(e)
+                    "error": str(e),
                 }

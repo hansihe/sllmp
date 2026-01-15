@@ -14,8 +14,13 @@ from typing import Dict, Any, AsyncGenerator
 from sllmp.context import Pipeline, RequestContext, PipelineState, NCompletionParams
 from sllmp.pipeline import create_request_context, execute_pipeline
 from sllmp.error import (
-    ValidationError, PipelineError, ProviderRateLimitError,
-    LLMProviderError, NetworkError, InternalError, MiddlewareError
+    ValidationError,
+    PipelineError,
+    ProviderRateLimitError,
+    LLMProviderError,
+    NetworkError,
+    InternalError,
+    MiddlewareError,
 )
 from sllmp.util.signal import Signal
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
@@ -27,7 +32,7 @@ def basic_params():
     return NCompletionParams(
         model_id="openai:gpt-3.5-turbo",
         messages=[{"role": "user", "content": "Test"}],
-        metadata={}
+        metadata={},
     )
 
 
@@ -129,6 +134,7 @@ class TestPipelineErrorRecovery:
 
     async def test_middleware_error_sets_pipeline_error_state(self, basic_params):
         """Test middleware errors properly set pipeline error state."""
+
         def failing_middleware(ctx: RequestContext):
             async def fail_in_pre(ctx: RequestContext):
                 raise ValueError("Middleware failed")
@@ -145,7 +151,7 @@ class TestPipelineErrorRecovery:
         # Should capture error and complete pipeline execution
         assert ctx.has_error
         assert ctx.pipeline_state == PipelineState.COMPLETE
-        
+
         # Verify error is properly set
         assert isinstance(ctx.error, MiddlewareError)
         assert "Middleware failed" in str(ctx.error)
@@ -156,24 +162,36 @@ class TestPipelineErrorRecovery:
             model_id="openai:gpt-4",
             messages=[{"role": "user", "content": "Stream test"}],
             stream=True,
-            metadata={}
+            metadata={},
         )
 
         # Mock stream that works initially then fails
         call_count = 0
+
         async def failing_stream():
             nonlocal call_count
             chunks = [
                 ChatCompletionChunk(
-                    id="test", object="chat.completion.chunk", created=123, model="test",
-                    choices=[{"index": 0, "delta": {"content": "Good"}, "finish_reason": None}]
+                    id="test",
+                    object="chat.completion.chunk",
+                    created=123,
+                    model="test",
+                    choices=[
+                        {
+                            "index": 0,
+                            "delta": {"content": "Good"},
+                            "finish_reason": None,
+                        }
+                    ],
                 )
             ]
 
             for chunk in chunks:
                 call_count += 1
                 if call_count > 1:
-                    raise NetworkError("Stream connection lost", request_id="test", provider="test")
+                    raise NetworkError(
+                        "Stream connection lost", request_id="test", provider="test"
+                    )
                 yield chunk
 
         def error_prone_middleware(ctx: RequestContext):
@@ -183,7 +201,7 @@ class TestPipelineErrorRecovery:
 
             ctx.pipeline.llm_call_stream_process.connect(process_chunk)
 
-        with patch('sllmp.pipeline.any_llm.acompletion', return_value=failing_stream()):
+        with patch("sllmp.pipeline.any_llm.acompletion", return_value=failing_stream()):
             ctx = create_request_context(streaming_params)
             ctx.add_middleware(error_prone_middleware)
 
@@ -231,7 +249,7 @@ class TestBoundaryConditions:
         params = NCompletionParams(
             model_id="openai:gpt-3.5-turbo",
             messages=[{"role": "user", "content": ""}],  # Minimal valid message
-            metadata={}
+            metadata={},
         )
 
         ctx = create_request_context(params)
@@ -246,7 +264,7 @@ class TestBoundaryConditions:
         params = NCompletionParams(
             model_id="openai:gpt-3.5-turbo",
             messages=[{"role": "user", "content": large_content}],
-            metadata={}
+            metadata={},
         )
 
         ctx = create_request_context(params)
@@ -260,7 +278,7 @@ class TestBoundaryConditions:
             model_id="openai:gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Test"}],
             temperature=0.0,  # Boundary value
-            metadata={}
+            metadata={},
         )
 
         ctx = create_request_context(params)
@@ -272,7 +290,7 @@ class TestBoundaryConditions:
             model_id="openai:gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Test"}],
             temperature=2.0,  # Maximum allowed
-            metadata={}
+            metadata={},
         )
 
         ctx = create_request_context(params)
@@ -284,7 +302,7 @@ class TestBoundaryConditions:
             model_id="openai:gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Test"}],
             max_tokens=100000,  # Very high value
-            metadata={}
+            metadata={},
         )
 
         ctx = create_request_context(params)
@@ -306,6 +324,7 @@ class TestConcurrencyAndRaceConditions:
                     execution_order.append(f"{name}_end")
 
                 ctx.pipeline.pre.connect(track)
+
             return middleware
 
         # Create multiple contexts
@@ -317,19 +336,30 @@ class TestConcurrencyAndRaceConditions:
 
         # Mock LLM calls
         mock_response = ChatCompletion(
-            id="concurrent", object="chat.completion", created=123, model="test",
-            choices=[{"index": 0, "message": {"role": "assistant", "content": "test"}, "finish_reason": "stop"}],
-            usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            id="concurrent",
+            object="chat.completion",
+            created=123,
+            model="test",
+            choices=[
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "test"},
+                    "finish_reason": "stop",
+                }
+            ],
+            usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         )
 
-        with patch('sllmp.pipeline.any_llm.acompletion', return_value=mock_response):
+        with patch("sllmp.pipeline.any_llm.acompletion", return_value=mock_response):
             # Execute pipelines concurrently
             tasks = []
             for ctx in contexts:
+
                 async def execute_ctx(context):
                     async for _result in execute_pipeline(context):
                         continue
                     return context
+
                 tasks.append(execute_ctx(ctx))
 
             results = await asyncio.gather(*tasks)
@@ -434,7 +464,7 @@ class TestErrorSerialization:
         error = ValidationError(
             "Invalid temperature value",
             request_id="req_test123",
-            field_name="temperature"
+            field_name="temperature",
         )
 
         serialized = error.to_dict()
@@ -450,7 +480,7 @@ class TestErrorSerialization:
             "Rate limit exceeded",
             request_id="req_test123",
             provider="openai",
-            retry_after=60
+            retry_after=60,
         )
 
         serialized = error.to_dict()
@@ -465,7 +495,7 @@ class TestErrorSerialization:
             "Provider service unavailable",
             request_id="req_test123",
             provider="anthropic",
-            provider_error_code="SERVICE_UNAVAILABLE"
+            provider_error_code="SERVICE_UNAVAILABLE",
         )
 
         serialized = error.to_dict()
@@ -484,30 +514,53 @@ class TestRecoveryScenarios:
             model_id="openai:gpt-4",
             messages=[{"role": "user", "content": "Stream test"}],
             stream=True,
-            metadata={}
+            metadata={},
         )
 
         chunks_sent = 0
+
         async def partial_failing_stream():
             nonlocal chunks_sent
             good_chunks = [
                 ChatCompletionChunk(
-                    id="partial", object="chat.completion.chunk", created=123, model="test",
-                    choices=[{"index": 0, "delta": {"content": "Good"}, "finish_reason": None}]
+                    id="partial",
+                    object="chat.completion.chunk",
+                    created=123,
+                    model="test",
+                    choices=[
+                        {
+                            "index": 0,
+                            "delta": {"content": "Good"},
+                            "finish_reason": None,
+                        }
+                    ],
                 ),
                 ChatCompletionChunk(
-                    id="partial", object="chat.completion.chunk", created=123, model="test",
-                    choices=[{"index": 0, "delta": {"content": " chunk"}, "finish_reason": None}]
-                )
+                    id="partial",
+                    object="chat.completion.chunk",
+                    created=123,
+                    model="test",
+                    choices=[
+                        {
+                            "index": 0,
+                            "delta": {"content": " chunk"},
+                            "finish_reason": None,
+                        }
+                    ],
+                ),
             ]
 
             for chunk in good_chunks:
                 chunks_sent += 1
                 yield chunk
                 if chunks_sent == 2:
-                    raise NetworkError("Connection lost", request_id="test", provider="test")
+                    raise NetworkError(
+                        "Connection lost", request_id="test", provider="test"
+                    )
 
-        with patch('sllmp.pipeline.any_llm.acompletion', return_value=partial_failing_stream()):
+        with patch(
+            "sllmp.pipeline.any_llm.acompletion", return_value=partial_failing_stream()
+        ):
             ctx = create_request_context(streaming_params)
 
             collected_chunks = []
@@ -526,24 +579,36 @@ class TestRecoveryScenarios:
         def working_middleware_1(ctx: RequestContext):
             async def work(ctx: RequestContext):
                 results.append("middleware1_executed")
+
             ctx.pipeline.pre.connect(work)
 
         def failing_middleware(ctx: RequestContext):
             async def fail(ctx: RequestContext):
                 results.append("failing_middleware_attempted")
                 raise ValueError("Middleware failure")
+
             ctx.pipeline.pre.connect(fail)
 
         def working_middleware_2(ctx: RequestContext):
             async def work(ctx: RequestContext):
                 results.append("middleware2_executed")
+
             ctx.pipeline.post.connect(work)
 
-        with patch('sllmp.pipeline.any_llm.acompletion') as mock_completion:
+        with patch("sllmp.pipeline.any_llm.acompletion") as mock_completion:
             mock_completion.return_value = ChatCompletion(
-                id="recovery", object="chat.completion", created=123, model="test",
-                choices=[{"index": 0, "message": {"role": "assistant", "content": "response"}, "finish_reason": "stop"}],
-                usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                id="recovery",
+                object="chat.completion",
+                created=123,
+                model="test",
+                choices=[
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "response"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             )
 
             ctx = create_request_context(basic_params)

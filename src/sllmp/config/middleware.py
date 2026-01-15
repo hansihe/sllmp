@@ -25,9 +25,10 @@ if TYPE_CHECKING:
     # Import for type hints only to avoid circular imports
     pass
 
+
 def configuration_middleware(
     config_file: str,
-    limit_backend: Optional[BaseLimitBackend]=None,
+    limit_backend: Optional[BaseLimitBackend] = None,
 ):
     """
     Configuration middleware that dynamically extends the pipeline.
@@ -71,22 +72,24 @@ def configuration_middleware(
             feature_config = config_resolver.resolve_feature_config(feature_name)
 
             # Step 3: Store configuration in context for other middleware
-            ctx.state['feature'] = {
-                'name': feature_name,
-                'config': feature_config,
-                'description': feature_config.feature_description,
-                'owner': feature_config.owner
+            ctx.state["feature"] = {
+                "name": feature_name,
+                "config": feature_config,
+                "description": feature_config.feature_description,
+                "owner": feature_config.owner,
             }
 
             # Step 4: Apply request-level configuration
             _apply_request_config(ctx, feature_config)
 
             # Step 5: Dynamically extend pipeline with feature-specific middleware
-            await _extend_pipeline_for_feature(ctx, config_resolver, limit_backend, feature_config)
+            await _extend_pipeline_for_feature(
+                ctx, config_resolver, limit_backend, feature_config
+            )
 
             # Log feature detection for debugging
-            ctx.metadata['detected_feature'] = feature_name
-            ctx.metadata['config_applied'] = True
+            ctx.metadata["detected_feature"] = feature_name
+            ctx.metadata["config_applied"] = True
 
         except ConfigurationError as e:
             raise ValidationError(
@@ -96,6 +99,7 @@ def configuration_middleware(
             )
 
     return setup
+
 
 def _detect_feature(ctx: RequestContext, config: ConfigResolver) -> Optional[str]:
     """
@@ -108,12 +112,12 @@ def _detect_feature(ctx: RequestContext, config: ConfigResolver) -> Optional[str
     4. Default feature for the client
     """
     # Method 1: Explicit feature in metadata
-    feature_name = ctx.client_metadata.get('feature')
+    feature_name = ctx.client_metadata.get("feature")
     if feature_name and config.feature_exists(feature_name):
         return feature_name
 
     # Method 2: Custom header
-    feature_name = ctx.client_metadata.get('x-ai-feature')
+    feature_name = ctx.client_metadata.get("x-ai-feature")
     if feature_name and config.feature_exists(feature_name):
         return feature_name
 
@@ -124,13 +128,14 @@ def _detect_feature(ctx: RequestContext, config: ConfigResolver) -> Optional[str
     # None return halts with error
     return None
 
+
 def _apply_request_config(ctx: RequestContext, config: ResolvedFeatureConfig) -> None:
     """Apply configuration to the current request."""
 
     # Override model if specified in config
     if config.model and config.model != ctx.request.model_id:
         ctx.request.model_id = config.model
-        ctx.metadata['model_overridden'] = True
+        ctx.metadata["model_overridden"] = True
 
     # # Apply prompt template if specified
     # prompt_template = config.get('prompt_template')
@@ -149,16 +154,16 @@ def _apply_request_config(ctx: RequestContext, config: ResolvedFeatureConfig) ->
     # Store providers config in context state for pipeline to use
     if config.providers:
         # Convert ProviderConfig objects to dicts for easier access in pipeline
-        ctx.state['providers'] = {
-            name: provider.model_dump()
-            for name, provider in config.providers.items()
+        ctx.state["providers"] = {
+            name: provider.model_dump() for name, provider in config.providers.items()
         }
+
 
 async def _extend_pipeline_for_feature(
     ctx: RequestContext,
     config_resolver: ConfigResolver,
     limit_backend: Optional[BaseLimitBackend],
-    feature_config: ResolvedFeatureConfig
+    feature_config: ResolvedFeatureConfig,
 ) -> None:
     """
     Dynamically add middleware to the pipeline based on feature configuration.
@@ -168,13 +173,16 @@ async def _extend_pipeline_for_feature(
     """
 
     # Add budget enforcement middleware if budget constraints are configured
-    limit_constraints = config_resolver.get_limit_constraints(feature_config.feature_name)
+    limit_constraints = config_resolver.get_limit_constraints(
+        feature_config.feature_name
+    )
     if limit_constraints:
         if limit_backend:
-            ctx.add_middleware(limit_enforcement_middleware(
-                constraints=list(limit_constraints.values()),
-                backend=limit_backend
-            ))
+            ctx.add_middleware(
+                limit_enforcement_middleware(
+                    constraints=list(limit_constraints.values()), backend=limit_backend
+                )
+            )
         else:
             logger.warning("Budget constraints provided but no limit backend provided!")
 
@@ -184,12 +192,14 @@ async def _extend_pipeline_for_feature(
         # Import here to avoid circular imports
         from ..middleware.service.langfuse import langfuse_middleware
 
-        ctx.add_middleware(langfuse_middleware(
-            public_key=langfuse_config.public_key,
-            secret_key=langfuse_config.secret_key,
-            base_url=langfuse_config.base_url,
-            default_prompt_label=langfuse_config.default_prompt_label
-        ))
+        ctx.add_middleware(
+            langfuse_middleware(
+                public_key=langfuse_config.public_key,
+                secret_key=langfuse_config.secret_key,
+                base_url=langfuse_config.base_url,
+                default_prompt_label=langfuse_config.default_prompt_label,
+            )
+        )
 
     # Add content guardrails middleware if configured
     # guardrails_config = config.get('guardrails', {})
@@ -215,39 +225,43 @@ async def _extend_pipeline_for_feature(
     #     ctx.extend_pipeline(validator_middleware)
 
     # Add basic logging middleware (always enabled for debugging)
-    ctx.add_middleware(logging_middleware(
-        log_requests=True,
-        log_responses=True,
-        feature_name=feature_config.feature_name
-    ))
+    ctx.add_middleware(
+        logging_middleware(
+            log_requests=True,
+            log_responses=True,
+            feature_name=feature_config.feature_name,
+        )
+    )
 
     # Add basic retry middleware
     # TODO make configurable
     ctx.add_middleware(retry_middleware())
 
+
 def _get_guardrail_policies(safety_level: str) -> List[str]:
     """Get guardrail policies based on safety level."""
-    if safety_level == 'disabled':
+    if safety_level == "disabled":
         return []
-    elif safety_level == 'basic':
-        return ['inappropriate']
-    elif safety_level == 'strict':
-        return ['inappropriate', 'pii']
-    elif safety_level == 'permissive':
+    elif safety_level == "basic":
+        return ["inappropriate"]
+    elif safety_level == "strict":
+        return ["inappropriate", "pii"]
+    elif safety_level == "permissive":
         return []  # Very minimal filtering for research use cases
     else:
-        return ['inappropriate']  # Default
+        return ["inappropriate"]  # Default
+
 
 async def after_llm(ctx: RequestContext) -> RequestContext:
     """Log configuration metadata after LLM execution."""
 
-    feature_info = ctx.state.get('feature', {})
+    feature_info = ctx.state.get("feature", {})
     if feature_info:
-        ctx.metadata['configuration_summary'] = {
-            'feature_used': feature_info['name'],
-            'feature_description': feature_info['description'],
-            'owner': feature_info['owner'],
-            'model_overridden': ctx.metadata.get('model_overridden', False)
+        ctx.metadata["configuration_summary"] = {
+            "feature_used": feature_info["name"],
+            "feature_description": feature_info["description"],
+            "owner": feature_info["owner"],
+            "model_overridden": ctx.metadata.get("model_overridden", False),
         }
 
     return ctx

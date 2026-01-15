@@ -23,8 +23,10 @@ from helpers import create_stream_chunks
 class TestCorePipelineExecution:
     """Test core pipeline execution flow."""
 
-    @patch('sllmp.pipeline.any_llm.acompletion')
-    async def test_empty_pipeline_non_streaming(self, mock_completion, basic_completion_params, mock_llm_response):
+    @patch("sllmp.pipeline.any_llm.acompletion")
+    async def test_empty_pipeline_non_streaming(
+        self, mock_completion, basic_completion_params, mock_llm_response
+    ):
         """Test pipeline execution with no middleware."""
         mock_completion.return_value = mock_llm_response
 
@@ -41,9 +43,12 @@ class TestCorePipelineExecution:
         assert ctx.pipeline_state == PipelineState.COMPLETE
         mock_completion.assert_called_once()
 
-    @patch('sllmp.pipeline.any_llm.acompletion')
-    async def test_empty_pipeline_streaming(self, mock_completion, streaming_completion_params, mock_stream_chunks):
+    @patch("sllmp.pipeline.any_llm.acompletion")
+    async def test_empty_pipeline_streaming(
+        self, mock_completion, streaming_completion_params, mock_stream_chunks
+    ):
         """Test streaming pipeline execution with no middleware."""
+
         async def mock_stream():
             for chunk in mock_stream_chunks:
                 yield chunk
@@ -55,7 +60,7 @@ class TestCorePipelineExecution:
         # Collect all chunks
         chunks = []
         async for item in execute_pipeline(ctx):
-                chunks.append(item)
+            chunks.append(item)
 
         # Verify streaming execution
         assert len(chunks) == len(mock_stream_chunks)
@@ -64,8 +69,10 @@ class TestCorePipelineExecution:
         assert ctx.chunk_count >= 0  # At least verify it's non-negative
         mock_completion.assert_called_once()
 
-    @patch('sllmp.pipeline.any_llm.acompletion')
-    async def test_pipeline_with_middleware_execution_order(self, mock_completion, basic_completion_params, mock_llm_response):
+    @patch("sllmp.pipeline.any_llm.acompletion")
+    async def test_pipeline_with_middleware_execution_order(
+        self, mock_completion, basic_completion_params, mock_llm_response
+    ):
         """Test middleware execution order in pipeline."""
         mock_completion.return_value = mock_llm_response
 
@@ -105,7 +112,14 @@ class TestCorePipelineExecution:
 
         # Verify execution order - adjust based on actual implementation behavior
         # Setup and pre-hooks should execute in order
-        assert execution_order[:6] == ["mw1_setup", "mw2_setup", "mw3_setup", "mw1_pre", "mw2_pre", "mw3_pre"]
+        assert execution_order[:6] == [
+            "mw1_setup",
+            "mw2_setup",
+            "mw3_setup",
+            "mw1_pre",
+            "mw2_pre",
+            "mw3_pre",
+        ]
 
         # Post-hooks should be present (order may vary based on implementation)
         post_hooks = execution_order[6:]
@@ -114,8 +128,10 @@ class TestCorePipelineExecution:
         assert "mw3_post" in post_hooks
         assert len(post_hooks) == 3
 
-    @patch('sllmp.pipeline.any_llm.acompletion')
-    async def test_middleware_state_sharing(self, mock_completion, basic_completion_params, mock_llm_response):
+    @patch("sllmp.pipeline.any_llm.acompletion")
+    async def test_middleware_state_sharing(
+        self, mock_completion, basic_completion_params, mock_llm_response
+    ):
         """Test middleware can share state through RequestContext."""
         mock_completion.return_value = mock_llm_response
 
@@ -154,11 +170,11 @@ class TestPipelineErrorHandling:
 
     async def test_validation_error_halts_pipeline(self, basic_completion_params):
         """Test validation error prevents LLM call and sets error state."""
+
         def failing_validation_middleware(ctx: RequestContext):
             async def validate(ctx: RequestContext):
                 raise ValidationError(
-                    "Invalid request format",
-                    request_id=ctx.request_id
+                    "Invalid request format", request_id=ctx.request_id
                 )
 
             ctx.pipeline.pre.connect(validate)
@@ -177,8 +193,10 @@ class TestPipelineErrorHandling:
         assert isinstance(ctx.error, ValidationError)
         assert ctx.error.message == "Invalid request format"
 
-    @patch('sllmp.pipeline.any_llm.acompletion')
-    async def test_llm_provider_error_handling(self, mock_completion, basic_completion_params):
+    @patch("sllmp.pipeline.any_llm.acompletion")
+    async def test_llm_provider_error_handling(
+        self, mock_completion, basic_completion_params
+    ):
         """Test handling of LLM provider errors."""
         mock_completion.side_effect = Exception("API rate limit exceeded")
 
@@ -196,9 +214,12 @@ class TestPipelineErrorHandling:
 class TestStreamingPipeline:
     """Test streaming-specific pipeline behavior."""
 
-    @patch('sllmp.pipeline.any_llm.acompletion')
-    async def test_streaming_chunk_processing(self, mock_completion, streaming_completion_params, mock_stream_chunks):
+    @patch("sllmp.pipeline.any_llm.acompletion")
+    async def test_streaming_chunk_processing(
+        self, mock_completion, streaming_completion_params, mock_stream_chunks
+    ):
         """Test streaming chunk processing (adjusted for current implementation)."""
+
         async def mock_stream():
             for chunk in mock_stream_chunks:
                 yield chunk
@@ -216,11 +237,14 @@ class TestStreamingPipeline:
         assert len(chunks) == len(mock_stream_chunks)
 
         # Verify we get the expected chunk structure
-        assert all(hasattr(chunk, 'choices') for chunk in chunks)
+        assert all(hasattr(chunk, "choices") for chunk in chunks)
 
-    @patch('sllmp.pipeline.any_llm.acompletion')
-    async def test_streaming_content_monitoring(self, mock_completion, streaming_completion_params, mock_stream_chunks):
+    @patch("sllmp.pipeline.any_llm.acompletion")
+    async def test_streaming_content_monitoring(
+        self, mock_completion, streaming_completion_params, mock_stream_chunks
+    ):
         """Test streaming content accumulation (adjusted for current implementation)."""
+
         async def mock_stream():
             for chunk in mock_stream_chunks:
                 yield chunk
@@ -234,7 +258,9 @@ class TestStreamingPipeline:
             continue
 
         # Verify the stream collector accumulated content
-        final_content = ctx.stream_collector.get_content(0)  # Get content for choice index 0
+        final_content = ctx.stream_collector.get_content(
+            0
+        )  # Get content for choice index 0
         # Should have accumulated the content from the chunks
         assert final_content is not None  # Basic check that accumulation works
 
@@ -242,7 +268,7 @@ class TestStreamingPipeline:
 class TestPipelineStateMachine:
     """Test pipeline state transitions and lifecycle."""
 
-    #async def test_pipeline_state_transitions(self, basic_completion_params):
+    # async def test_pipeline_state_transitions(self, basic_completion_params):
     #    """Test proper state transitions throughout pipeline execution."""
     #    states_observed = []
 
@@ -303,11 +329,20 @@ class TestPipelineStateMachine:
             ctx.pipeline.post.connect(capture_end)
 
         # Mock LLM call
-        with patch('sllmp.pipeline.any_llm.acompletion') as mock_completion:
+        with patch("sllmp.pipeline.any_llm.acompletion") as mock_completion:
             mock_completion.return_value = ChatCompletion(
-                id="test", object="chat.completion", created=123, model="test",
-                choices=[{"index": 0, "message": {"role": "assistant", "content": "test"}, "finish_reason": "stop"}],
-                usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                id="test",
+                object="chat.completion",
+                created=123,
+                model="test",
+                choices=[
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "test"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
             )
 
             ctx = create_request_context(basic_completion_params)

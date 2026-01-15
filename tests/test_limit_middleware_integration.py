@@ -98,7 +98,9 @@ class TestRateLimitIntegration:
                         "metadata": {"user_id": "test_user"},
                     },
                 )
-                assert response.status_code == 200, f"Request {i} failed: {response.text}"
+                assert response.status_code == 200, (
+                    f"Request {i} failed: {response.text}"
+                )
 
     async def test_requests_over_rate_limit_rejected(
         self, mock_llm_completion, backend, rate_limit_constraint

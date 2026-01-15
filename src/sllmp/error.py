@@ -2,10 +2,12 @@ from abc import ABC
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+
 # Error type definitions
 @dataclass
 class PipelineError(Exception, ABC):
     """Base class for all pipeline errors."""
+
     message: str
     request_id: str
     error_type: str = field(init=False)
@@ -17,7 +19,7 @@ class PipelineError(Exception, ABC):
                 "message": self.message,
                 "type": self.error_type,
                 "request_id": self.request_id,
-                **self._extra_fields()
+                **self._extra_fields(),
             }
         }
 
@@ -33,6 +35,7 @@ class PipelineError(Exception, ABC):
 @dataclass
 class MiddlewareError(PipelineError):
     """Error that occurred in middleware execution."""
+
     middleware_name: str
     error_type: str = field(default="middleware_error", init=False)
 
@@ -43,12 +46,14 @@ class MiddlewareError(PipelineError):
 @dataclass
 class StreamError(PipelineError):
     """Error that occurred during streaming."""
+
     error_type: str = field(default="stream_error", init=False)
 
 
 @dataclass
 class ValidationError(PipelineError):
     """Error due to invalid request parameters."""
+
     field_name: Optional[str] = None
     status_code: int = 422
     error_type: str = field(default="validation_error", init=False)
@@ -60,35 +65,43 @@ class ValidationError(PipelineError):
 @dataclass
 class AuthenticationError(PipelineError):
     """Error due to authentication failure."""
+
     error_type: str = field(default="authentication_error", init=False)
+
 
 @dataclass
 class InternalError(PipelineError):
     """Internal system error."""
+
     error_type: str = field(default="internal_error", init=False)
 
 
 @dataclass
 class LLMProviderError(PipelineError):
     """Base class for LLM provider errors."""
+
     provider: str
     provider_error_code: Optional[str] = None
     error_type: str = field(default="llm_provider_error", init=False)
-    
+
     def _extra_fields(self) -> Dict[str, Any]:
         base = {"provider": self.provider}
         if self.provider_error_code:
             base["provider_error_code"] = self.provider_error_code
         return base
 
+
 @dataclass
 class ProviderBadRequestError(LLMProviderError):
     """Error when the provider rejects the request (4xx)."""
+
     error_type: str = field(default="provider_bad_request", init=False)
+
 
 @dataclass
 class ProviderRateLimitError(LLMProviderError):
     """Rate limit exceeded by LLM provider. Retryable."""
+
     retry_after: Optional[int] = None  # Seconds to wait before retry
     error_type: str = field(default="provider_rate_limit_error", init=False)
 
@@ -102,12 +115,14 @@ class ProviderRateLimitError(LLMProviderError):
 @dataclass
 class ContentPolicyError(LLMProviderError):
     """Content blocked by provider policy."""
+
     error_type: str = field(default="content_policy_error", init=False)
 
 
 @dataclass
 class ModelNotFoundError(LLMProviderError):
     """Requested model not available."""
+
     model_id: str = field(default="unknown")
     error_type: str = field(default="model_not_found_error", init=False)
 
@@ -120,16 +135,19 @@ class ModelNotFoundError(LLMProviderError):
 @dataclass
 class ContextLengthExceededError(LLMProviderError):
     """Input exceeds model's maximum context length."""
+
     error_type: str = field(default="context_length_exceeded_error", init=False)
 
 
 @dataclass
 class NetworkError(LLMProviderError):
     """Network connectivity error."""
+
     error_type: str = field(default="network_error", init=False)
 
 
 @dataclass
 class ServiceUnavailableError(LLMProviderError):
     """LLM provider service temporarily unavailable."""
+
     error_type: str = field(default="service_unavailable_error", init=False)

@@ -22,13 +22,14 @@ from ..error import (
     ProviderRateLimitError,
     NetworkError,
     ServiceUnavailableError,
-    InternalError
+    InternalError,
 )
 
 
 @dataclass
 class RetryState:
     """State tracking for retry attempts within a single request."""
+
     max_attempts: int
     base_delay: float
     max_delay: float
@@ -47,7 +48,7 @@ def retry_middleware(
     max_delay: float = 60.0,
     backoff_multiplier: float = 2.0,
     retryable_errors: Optional[Set[Type[PipelineError]]] = None,
-    log_retries: bool = True
+    log_retries: bool = True,
 ):
     """
     Retry middleware that automatically retries failed LLM requests.
@@ -69,7 +70,7 @@ def retry_middleware(
             ProviderRateLimitError,
             NetworkError,
             ServiceUnavailableError,
-            InternalError
+            InternalError,
         }
 
     # Create retry state in closure scope
@@ -79,13 +80,13 @@ def retry_middleware(
         max_delay=max_delay,
         backoff_multiplier=backoff_multiplier,
         retryable_errors=retryable_errors,
-        log_retries=log_retries
+        log_retries=log_retries,
     )
 
     def setup(ctx: RequestContext):
         # Store reference to retry state for both metadata and state access
-        ctx.metadata['retry_state'] = retry_state
-        ctx.state['retry_state'] = retry_state  # For easier test access
+        ctx.metadata["retry_state"] = retry_state
+        ctx.state["retry_state"] = retry_state  # For easier test access
 
         # Connect to the error signal to handle retry logic
         ctx.pipeline.error.connect(_handle_retry_logic)
@@ -119,24 +120,31 @@ def retry_middleware(
         retry_state.attempts += 1
 
         # Record this attempt
-        retry_state.history.append({
-            'attempt': retry_state.attempts,
-            'error_type': type(error).__name__,
-            'error_message': error.message,
-            'timestamp': time.time()
-        })
+        retry_state.history.append(
+            {
+                "attempt": retry_state.attempts,
+                "error_type": type(error).__name__,
+                "error_message": error.message,
+                "timestamp": time.time(),
+            }
+        )
 
         if retry_state.log_retries:
             _log_retry_attempt(ctx, retry_state.attempts, retry_state.max_attempts)
 
         # Calculate delay for this retry (use attempts - 1 for exponential calculation)
         delay = min(
-            retry_state.base_delay * (retry_state.backoff_multiplier ** (retry_state.attempts - 1)),
-            retry_state.max_delay
+            retry_state.base_delay
+            * (retry_state.backoff_multiplier ** (retry_state.attempts - 1)),
+            retry_state.max_delay,
         )
 
         # For rate limit errors, respect the retry_after if provided
-        if isinstance(ctx.error, ProviderRateLimitError) and hasattr(ctx.error, 'retry_after') and ctx.error.retry_after:
+        if (
+            isinstance(ctx.error, ProviderRateLimitError)
+            and hasattr(ctx.error, "retry_after")
+            and ctx.error.retry_after
+        ):
             delay = max(delay, ctx.error.retry_after)
 
         if retry_state.log_retries:
@@ -151,12 +159,16 @@ def retry_middleware(
 
         if retry_state.log_retries and retry_state.attempts == retry_state.max_attempts:
             # This is our final attempt
-            _log_final_retry_attempt(ctx, retry_state.attempts, retry_state.max_attempts)
+            _log_final_retry_attempt(
+                ctx, retry_state.attempts, retry_state.max_attempts
+            )
 
     return setup
 
 
-def _is_retryable_error(error: PipelineError, retryable_errors: Set[Type[PipelineError]]) -> bool:
+def _is_retryable_error(
+    error: PipelineError, retryable_errors: Set[Type[PipelineError]]
+) -> bool:
     """Check if an error is retryable based on its type."""
     return any(isinstance(error, error_type) for error_type in retryable_errors)
 
@@ -175,7 +187,9 @@ def _log_final_retry_attempt(ctx: RequestContext, attempt: int, max_attempts: in
     )
 
 
-def _log_retry_delay(ctx: RequestContext, error: PipelineError, attempt: int, delay: float):
+def _log_retry_delay(
+    ctx: RequestContext, error: PipelineError, attempt: int, delay: float
+):
     """Log retry delay."""
     logger.info(
         f"Retrying request {ctx.request_id} after {delay:.1f}s delay due to {type(error).__name__}: {error.message}"
@@ -189,9 +203,11 @@ def _log_non_retryable_error(ctx: RequestContext, error: PipelineError, attempt:
     )
 
 
-def _log_retry_exhausted(ctx: RequestContext, final_error: PipelineError, max_attempts: int):
+def _log_retry_exhausted(
+    ctx: RequestContext, final_error: PipelineError, max_attempts: int
+):
     """Log retry exhaustion."""
-    retry_state = ctx.metadata.get('retry_state')
+    retry_state = ctx.metadata.get("retry_state")
     total_attempts = len(retry_state.history) if retry_state else max_attempts
 
     logger.warning(

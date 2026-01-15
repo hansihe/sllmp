@@ -53,7 +53,11 @@ def create_stream_chunks(
             created=1234567890,
             model=model,
             choices=[
-                {"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": ""},
+                    "finish_reason": None,
+                }
             ],
         )
     ]
@@ -66,7 +70,9 @@ def create_stream_chunks(
                 object="chat.completion.chunk",
                 created=1234567890,
                 model=model,
-                choices=[{"index": 0, "delta": {"content": part}, "finish_reason": None}],
+                choices=[
+                    {"index": 0, "delta": {"content": part}, "finish_reason": None}
+                ],
             )
         )
 

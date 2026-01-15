@@ -12,6 +12,7 @@ from .handlers import (
     health_handler,
 )
 
+
 class SimpleProxyServer:
     """
     Core server class that provides OpenAI-compatible endpoints.
@@ -30,7 +31,12 @@ class SimpleProxyServer:
         """
         self.pipeline_factory = pipeline_factory
 
-    def create_asgi_app(self, debug: bool = True, middleware: Optional[List[Middleware]] = None, enable_tracing: bool = False) -> Starlette:
+    def create_asgi_app(
+        self,
+        debug: bool = True,
+        middleware: Optional[List[Middleware]] = None,
+        enable_tracing: bool = False,
+    ) -> Starlette:
         """
         Create and configure the ASGI application.
 
@@ -42,31 +48,40 @@ class SimpleProxyServer:
             Configured Starlette application
         """
         routes = [
-            Route('/', health_handler),
-            Route('/health', health_handler),
-            Route('/v1/models', models_handler, methods=['GET']),
-            Route('/v1/chat/completions', self._create_chat_completions_handler(), methods=['POST']),
+            Route("/", health_handler),
+            Route("/health", health_handler),
+            Route("/v1/models", models_handler, methods=["GET"]),
+            Route(
+                "/v1/chat/completions",
+                self._create_chat_completions_handler(),
+                methods=["POST"],
+            ),
         ]
 
-        app = Starlette(
-            debug=debug,
-            routes=routes,
-            middleware=middleware or []
-        )
+        app = Starlette(debug=debug, routes=routes, middleware=middleware or [])
 
         if enable_tracing:
             from opentelemetry.instrumentation.starlette import StarletteInstrumentor
+
             StarletteInstrumentor.instrument_app(app)
 
         return app
 
     def _create_chat_completions_handler(self):
         """Create the chat completions handler with this server's pipeline."""
+
         async def handler(request):
             return await chat_completions_handler(request, self.pipeline_factory)
+
         return handler
 
-    def add_route(self, app: Starlette, path: str, handler: Callable, methods: Optional[List[str]] = None):
+    def add_route(
+        self,
+        app: Starlette,
+        path: str,
+        handler: Callable,
+        methods: Optional[List[str]] = None,
+    ):
         """
         Add a custom route to the application.
 
@@ -77,5 +92,5 @@ class SimpleProxyServer:
             methods: HTTP methods to accept (defaults to ['GET'])
         """
         if methods is None:
-            methods = ['GET']
+            methods = ["GET"]
         app.router.routes.append(Route(path, handler, methods=methods))

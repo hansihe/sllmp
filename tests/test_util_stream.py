@@ -22,7 +22,7 @@ def create_mock_chunk_choice(
     delta_role: str = None,
     function_call: Dict[str, Any] = None,
     tool_calls: list = None,
-    finish_reason: str = None
+    finish_reason: str = None,
 ):
     """Create a mock ChunkChoice for testing."""
     choice = Mock()
@@ -37,22 +37,22 @@ def create_mock_chunk_choice(
 
     if function_call:
         func_call = Mock()
-        func_call.name = function_call.get('name')
-        func_call.arguments = function_call.get('arguments')
+        func_call.name = function_call.get("name")
+        func_call.arguments = function_call.get("arguments")
         delta.function_call = func_call
 
     if tool_calls:
         delta_tool_calls = []
         for tool_call in tool_calls:
             tc = Mock()
-            tc.index = tool_call['index']
-            tc.id = tool_call.get('id')
-            tc.type = tool_call.get('type')
+            tc.index = tool_call["index"]
+            tc.id = tool_call.get("id")
+            tc.type = tool_call.get("type")
 
-            if 'function' in tool_call:
+            if "function" in tool_call:
                 func = Mock()
-                func.name = tool_call['function'].get('name')
-                func.arguments = tool_call['function'].get('arguments')
+                func.name = tool_call["function"].get("name")
+                func.arguments = tool_call["function"].get("arguments")
                 tc.function = func
             else:
                 tc.function = None
@@ -105,72 +105,81 @@ class TestDeltaCollector:
         collector = DeltaCollector()
 
         # Add function call name
-        collector.accumulate(create_mock_chunk_choice(
-            function_call={'name': 'get_weather'}
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(function_call={"name": "get_weather"})
+        )
 
         result = collector.get_function_call()
-        assert result == {'name': 'get_weather'}
+        assert result == {"name": "get_weather"}
 
         # Add function arguments in chunks
-        collector.accumulate(create_mock_chunk_choice(
-            function_call={'arguments': '{"location": "'}
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            function_call={'arguments': 'San Francisco"}'}
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(function_call={"arguments": '{"location": "'})
+        )
+        collector.accumulate(
+            create_mock_chunk_choice(function_call={"arguments": 'San Francisco"}'})
+        )
 
         result = collector.get_function_call()
         assert result == {
-            'name': 'get_weather',
-            'arguments': '{"location": "San Francisco"}'
+            "name": "get_weather",
+            "arguments": '{"location": "San Francisco"}',
         }
 
     def test_tool_calls_accumulation(self):
         collector = DeltaCollector()
 
         # Add first tool call
-        collector.accumulate(create_mock_chunk_choice(
-            tool_calls=[{
-                'index': 0,
-                'id': 'call_123',
-                'type': 'function',
-                'function': {'name': 'get_weather'}
-            }]
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                tool_calls=[
+                    {
+                        "index": 0,
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {"name": "get_weather"},
+                    }
+                ]
+            )
+        )
 
         # Add arguments to first tool call
-        collector.accumulate(create_mock_chunk_choice(
-            tool_calls=[{
-                'index': 0,
-                'function': {'arguments': '{"location": "NYC"}'}
-            }]
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                tool_calls=[
+                    {"index": 0, "function": {"arguments": '{"location": "NYC"}'}}
+                ]
+            )
+        )
 
         # Add second tool call
-        collector.accumulate(create_mock_chunk_choice(
-            tool_calls=[{
-                'index': 1,
-                'id': 'call_456',
-                'type': 'function',
-                'function': {'name': 'get_time', 'arguments': '{}'}
-            }]
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                tool_calls=[
+                    {
+                        "index": 1,
+                        "id": "call_456",
+                        "type": "function",
+                        "function": {"name": "get_time", "arguments": "{}"},
+                    }
+                ]
+            )
+        )
 
         result = collector.get_tool_calls()
         assert len(result) == 2
 
         # Check first tool call
-        assert result[0].id == 'call_123'
-        assert result[0].type == 'function'
-        assert result[0].function.name == 'get_weather'
+        assert result[0].id == "call_123"
+        assert result[0].type == "function"
+        assert result[0].function.name == "get_weather"
         assert result[0].function.arguments == '{"location": "NYC"}'
 
         # Check second tool call
-        assert result[1].id == 'call_456'
-        assert result[1].type == 'function'
-        assert result[1].function.name == 'get_time'
-        assert result[1].function.arguments == '{}'
+        assert result[1].id == "call_456"
+        assert result[1].type == "function"
+        assert result[1].function.name == "get_time"
+        assert result[1].function.arguments == "{}"
 
     def test_finish_reason(self):
         collector = DeltaCollector()
@@ -197,11 +206,11 @@ class TestDeltaCollector:
         collector = DeltaCollector()
 
         # Add some data
-        collector.accumulate(create_mock_chunk_choice(
-            delta_content="Hello",
-            delta_role="assistant",
-            finish_reason="stop"
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                delta_content="Hello", delta_role="assistant", finish_reason="stop"
+            )
+        )
 
         assert collector.get_content() == "Hello"
         assert collector.get_role() == "assistant"
@@ -231,11 +240,11 @@ class TestMultiChoiceDeltaCollector:
     def test_single_choice_accumulation(self):
         collector = MultiChoiceDeltaCollector()
 
-        collector.accumulate(create_mock_chunk_choice(
-            index=0,
-            delta_content="Hello",
-            delta_role="assistant"
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                index=0, delta_content="Hello", delta_role="assistant"
+            )
+        )
 
         assert collector.get_choice_indices() == [0]
         assert collector.get_content(0) == "Hello"
@@ -245,35 +254,32 @@ class TestMultiChoiceDeltaCollector:
         collector = MultiChoiceDeltaCollector()
 
         # Simulate interleaved chunks from multiple choices
-        collector.accumulate(create_mock_chunk_choice(
-            index=0, delta_content="First"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            index=1, delta_content="Second"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            index=0, delta_content=" response"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            index=1, delta_content=" alternative"
-        ))
+        collector.accumulate(create_mock_chunk_choice(index=0, delta_content="First"))
+        collector.accumulate(create_mock_chunk_choice(index=1, delta_content="Second"))
+        collector.accumulate(
+            create_mock_chunk_choice(index=0, delta_content=" response")
+        )
+        collector.accumulate(
+            create_mock_chunk_choice(index=1, delta_content=" alternative")
+        )
 
         assert set(collector.get_choice_indices()) == {0, 1}
         assert collector.get_content(0) == "First response"
         assert collector.get_content(1) == "Second alternative"
 
         all_content = collector.get_all_content()
-        assert all_content == {
-            0: "First response",
-            1: "Second alternative"
-        }
+        assert all_content == {0: "First response", 1: "Second alternative"}
 
     def test_completion_tracking(self):
         collector = MultiChoiceDeltaCollector()
 
         # Add content to both choices
-        collector.accumulate(create_mock_chunk_choice(index=0, delta_content="Choice 0"))
-        collector.accumulate(create_mock_chunk_choice(index=1, delta_content="Choice 1"))
+        collector.accumulate(
+            create_mock_chunk_choice(index=0, delta_content="Choice 0")
+        )
+        collector.accumulate(
+            create_mock_chunk_choice(index=1, delta_content="Choice 1")
+        )
 
         # Neither should be complete
         assert not collector.is_complete()
@@ -310,12 +316,16 @@ class TestMultiChoiceDeltaCollector:
         collector = MultiChoiceDeltaCollector()
 
         # Add data to multiple choices
-        collector.accumulate(create_mock_chunk_choice(
-            index=0, delta_content="Choice 0", finish_reason="stop"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            index=1, delta_content="Choice 1", finish_reason="stop"
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                index=0, delta_content="Choice 0", finish_reason="stop"
+            )
+        )
+        collector.accumulate(
+            create_mock_chunk_choice(
+                index=1, delta_content="Choice 1", finish_reason="stop"
+            )
+        )
 
         assert len(collector.get_choice_indices()) == 2
         assert collector.is_complete()
@@ -339,7 +349,6 @@ class TestIntegration:
             # Initial role chunks
             create_mock_chunk_choice(index=0, delta_role="assistant"),
             create_mock_chunk_choice(index=1, delta_role="assistant"),
-
             # Interleaved content
             create_mock_chunk_choice(index=0, delta_content="The weather"),
             create_mock_chunk_choice(index=1, delta_content="Today is"),
@@ -347,7 +356,6 @@ class TestIntegration:
             create_mock_chunk_choice(index=1, delta_content=" a beautiful day"),
             create_mock_chunk_choice(index=0, delta_content=" and warm."),
             create_mock_chunk_choice(index=1, delta_content=" for a walk."),
-
             # Completion
             create_mock_chunk_choice(index=0, finish_reason="stop"),
             create_mock_chunk_choice(index=1, finish_reason="stop"),
@@ -374,10 +382,10 @@ class TestIntegration:
 
         chunks = [
             create_mock_chunk_choice(delta_role="assistant"),
-            create_mock_chunk_choice(function_call={'name': 'search_web'}),
-            create_mock_chunk_choice(function_call={'arguments': '{"query": "'}),
-            create_mock_chunk_choice(function_call={'arguments': 'weather today'}),
-            create_mock_chunk_choice(function_call={'arguments': '"}'}),
+            create_mock_chunk_choice(function_call={"name": "search_web"}),
+            create_mock_chunk_choice(function_call={"arguments": '{"query": "'}),
+            create_mock_chunk_choice(function_call={"arguments": "weather today"}),
+            create_mock_chunk_choice(function_call={"arguments": '"}'}),
             create_mock_chunk_choice(finish_reason="function_call"),
         ]
 
@@ -389,8 +397,8 @@ class TestIntegration:
         assert collector.get_finish_reason() == "function_call"
 
         func_call = collector.get_function_call()
-        assert func_call['name'] == 'search_web'
-        assert func_call['arguments'] == '{"query": "weather today"}'
+        assert func_call["name"] == "search_web"
+        assert func_call["arguments"] == '{"query": "weather today"}'
 
 
 class TestChoiceReconstruction:
@@ -401,14 +409,14 @@ class TestChoiceReconstruction:
         collector = DeltaCollector()
 
         # Accumulate content
-        collector.accumulate(create_mock_chunk_choice(
-            delta_role="assistant",
-            delta_content="Hello world"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            delta_content="!",
-            finish_reason="stop"
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                delta_role="assistant", delta_content="Hello world"
+            )
+        )
+        collector.accumulate(
+            create_mock_chunk_choice(delta_content="!", finish_reason="stop")
+        )
 
         # Convert to Choice
         choice = collector.to_choice(index=0)
@@ -424,16 +432,19 @@ class TestChoiceReconstruction:
 
         chunks = [
             create_mock_chunk_choice(delta_role="assistant"),
-            create_mock_chunk_choice(tool_calls=[{
-                'index': 0,
-                'id': 'call_123',
-                'type': 'function',
-                'function': {'name': 'get_weather'}
-            }]),
-            create_mock_chunk_choice(tool_calls=[{
-                'index': 0,
-                'function': {'arguments': '{"city": "NYC"}'}
-            }]),
+            create_mock_chunk_choice(
+                tool_calls=[
+                    {
+                        "index": 0,
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {"name": "get_weather"},
+                    }
+                ]
+            ),
+            create_mock_chunk_choice(
+                tool_calls=[{"index": 0, "function": {"arguments": '{"city": "NYC"}'}}]
+            ),
             create_mock_chunk_choice(finish_reason="tool_calls"),
         ]
 
@@ -454,26 +465,20 @@ class TestChoiceReconstruction:
         collector = MultiChoiceDeltaCollector()
 
         # Add content to choice 0
-        collector.accumulate(create_mock_chunk_choice(
-            index=0,
-            delta_role="assistant",
-            delta_content="First response"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            index=0,
-            finish_reason="stop"
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                index=0, delta_role="assistant", delta_content="First response"
+            )
+        )
+        collector.accumulate(create_mock_chunk_choice(index=0, finish_reason="stop"))
 
         # Add content to choice 1
-        collector.accumulate(create_mock_chunk_choice(
-            index=1,
-            delta_role="assistant",
-            delta_content="Second response"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            index=1,
-            finish_reason="stop"
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                index=1, delta_role="assistant", delta_content="Second response"
+            )
+        )
+        collector.accumulate(create_mock_chunk_choice(index=1, finish_reason="stop"))
 
         # Test individual choice conversion
         choice_0 = collector.to_choice(0)
@@ -492,24 +497,30 @@ class TestChoiceReconstruction:
         collector = MultiChoiceDeltaCollector()
 
         # Add content to multiple choices (out of order indices)
-        collector.accumulate(create_mock_chunk_choice(
-            index=2,
-            delta_role="assistant",
-            delta_content="Third response",
-            finish_reason="stop"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            index=0,
-            delta_role="assistant",
-            delta_content="First response",
-            finish_reason="stop"
-        ))
-        collector.accumulate(create_mock_chunk_choice(
-            index=1,
-            delta_role="assistant",
-            delta_content="Second response",
-            finish_reason="stop"
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(
+                index=2,
+                delta_role="assistant",
+                delta_content="Third response",
+                finish_reason="stop",
+            )
+        )
+        collector.accumulate(
+            create_mock_chunk_choice(
+                index=0,
+                delta_role="assistant",
+                delta_content="First response",
+                finish_reason="stop",
+            )
+        )
+        collector.accumulate(
+            create_mock_chunk_choice(
+                index=1,
+                delta_role="assistant",
+                delta_content="Second response",
+                finish_reason="stop",
+            )
+        )
 
         # Convert all to choices
         choices = collector.to_choices()
@@ -527,10 +538,9 @@ class TestChoiceReconstruction:
         """Test converting collectors to Choice objects."""
         # Collector with minimal data (role and finish_reason required)
         collector = DeltaCollector()
-        collector.accumulate(create_mock_chunk_choice(
-            delta_role="assistant",
-            finish_reason="stop"
-        ))
+        collector.accumulate(
+            create_mock_chunk_choice(delta_role="assistant", finish_reason="stop")
+        )
 
         choice = collector.to_choice()
 

@@ -22,18 +22,20 @@ class AuthMiddleware(Middleware):
         """Validate authentication and extract user info."""
 
         # Extract user information from OpenAI metadata field
-        user_id = ctx.client_metadata.get('user_id')
+        user_id = ctx.client_metadata.get("user_id")
 
         if self.require_user_id and not user_id:
-            self.halt_with_error(ctx, "Authentication required: user_id missing", "auth_error")
+            self.halt_with_error(
+                ctx, "Authentication required: user_id missing", "auth_error"
+            )
             return ctx
 
         # Store auth info in context state for other middleware
         if user_id:
-            ctx.state['auth'] = {
-                'user_id': user_id,
-                'organization': ctx.client_metadata.get('organization'),
-                'authenticated_at': time.time()
+            ctx.state["auth"] = {
+                "user_id": user_id,
+                "organization": ctx.client_metadata.get("organization"),
+                "authenticated_at": time.time(),
             }
 
         return ctx
@@ -56,19 +58,21 @@ class RateLimitMiddleware(Middleware):
         """Check rate limits for the authenticated user."""
 
         # Get user info from auth middleware
-        auth_info = ctx.state.get('auth')
+        auth_info = ctx.state.get("auth")
         if not auth_info:
-            self.halt_with_error(ctx, "Rate limiting requires authentication", "auth_error")
+            self.halt_with_error(
+                ctx, "Rate limiting requires authentication", "auth_error"
+            )
             return ctx
 
-        user_id = auth_info['user_id']
+        user_id = auth_info["user_id"]
 
         # TODO: Implement actual rate limiting logic
         # For now, just log the attempt
-        ctx.metadata['rate_limit_check'] = {
-            'user_id': user_id,
-            'limit': self.rpm,
-            'checked_at': time.time()
+        ctx.metadata["rate_limit_check"] = {
+            "user_id": user_id,
+            "limit": self.rpm,
+            "checked_at": time.time(),
         }
 
         # Example of how rate limiting would work:
