@@ -9,7 +9,10 @@ from opentelemetry import trace
 
 from ..pipeline import create_request_context, execute_pipeline
 from ..context import NCompletionParams, RequestContext
-from ..error import AuthenticationError, ProviderBadRequestError, RateLimitError, InternalError, ValidationError
+from ..error import (
+    AuthenticationError, ProviderBadRequestError, RateLimitError, InternalError,
+    ValidationError, ServiceUnavailableError, NetworkError
+)
 from ..middleware import create_validation_middleware
 
 tracer = trace.get_tracer(__name__)
@@ -194,6 +197,10 @@ async def chat_completions_handler(request: Request, add_middleware):
                     status_code = 401
                 elif isinstance(error, RateLimitError):
                     status_code = 429
+                elif isinstance(error, ServiceUnavailableError):
+                    status_code = 503
+                elif isinstance(error, NetworkError):
+                    status_code = 502
                 elif isinstance(error, InternalError):
                     status_code = 500
                 elif isinstance(error, ProviderBadRequestError):

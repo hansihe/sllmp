@@ -146,6 +146,14 @@ def _apply_request_config(ctx: RequestContext, config: ResolvedFeatureConfig) ->
 
     ctx.provider_keys = config.provider_api_keys
 
+    # Store providers config in context state for pipeline to use
+    if config.providers:
+        # Convert ProviderConfig objects to dicts for easier access in pipeline
+        ctx.state['providers'] = {
+            name: provider.model_dump()
+            for name, provider in config.providers.items()
+        }
+
 async def _extend_pipeline_for_feature(
     ctx: RequestContext,
     config_resolver: ConfigResolver,

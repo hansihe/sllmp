@@ -7,14 +7,36 @@ with defaults inheritance.
 """
 
 import os
+import re
 import yaml
 from typing import Dict, List, Any, Optional, Literal
+import pydantic
 from pydantic import BaseModel, Field, field_validator
 from ..middleware.limit import Constraint
 
 class ConfigurationError(Exception):
     """Configuration validation or loading error."""
     pass
+
+
+class ProviderConfig(BaseModel):
+    """
+    Custom provider configuration.
+
+    Allows defining a provider alias that maps to an underlying any_llm provider
+    with additional options (api_base, etc.) passed to acompletion calls.
+    """
+    provider: str = Field(..., description="Underlying any_llm provider (e.g., openai, anthropic)")
+
+    model_config = pydantic.ConfigDict(extra="allow")
+
+    @field_validator('provider')
+    @classmethod
+    def validate_provider(cls, v):
+        if not v or v.strip() == "":
+            raise ValueError("provider cannot be empty")
+        return v
+
 
 # class GuardrailConfig(BaseModel):
 #     """Content safety and guardrail configuration."""
@@ -57,7 +79,8 @@ class DefaultsConfig(BaseModel):
     """Global default configuration applied to all features."""
     model: Optional[str] = Field(default=None, description="Override provider:model for this feature")
     provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
-    
+    providers: Dict[str, ProviderConfig] = Field(default_factory=dict, description="Custom provider configurations")
+
     # Advanced budget constraints
     budget_constraints: Dict[str, Constraint] = Field(default_factory=dict, description="Multi-dimensional budget constraints by name")
 
@@ -72,6 +95,21 @@ class DefaultsConfig(BaseModel):
     def resolve_env_vars(cls, kv):
         """Resolve environment variables in API keys."""
         return _resolve_env_vars(kv)
+
+    @field_validator('providers', mode='before')
+    @classmethod
+    def validate_providers(cls, v):
+        """Validate provider names and resolve env vars in provider configs."""
+        if not v:
+            return v
+        name_pattern = re.compile(r'^[a-zA-Z0-9_-]+$')
+        for provider_name in v.keys():
+            if not name_pattern.match(provider_name):
+                raise ValueError(f"Invalid provider name: {provider_name}. Only letters, numbers, _ and - allowed")
+            # Resolve env vars in provider config values
+            if isinstance(v[provider_name], dict):
+                v[provider_name] = _resolve_env_vars(v[provider_name])
+        return v
 
     @field_validator('budget_constraints')
     @classmethod
@@ -91,6 +129,7 @@ class FeatureConfig(BaseModel):
     # Provider and model overrides
     model: Optional[str] = Field(default=None, description="Override provider:model for this feature")
     provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
+    providers: Dict[str, ProviderConfig] = Field(default_factory=dict, description="Feature-specific provider overrides")
 
     # Advanced budget constraints
     budget_constraints: Dict[str, Constraint] = Field(default_factory=dict, description="Multi-dimensional budget constraints by name")
@@ -109,6 +148,21 @@ class FeatureConfig(BaseModel):
     def resolve_env_vars(cls, kv):
         """Resolve environment variables in API keys."""
         return _resolve_env_vars(kv)
+
+    @field_validator('providers', mode='before')
+    @classmethod
+    def validate_providers(cls, v):
+        """Validate provider names and resolve env vars in provider configs."""
+        if not v:
+            return v
+        name_pattern = re.compile(r'^[a-zA-Z0-9_-]+$')
+        for provider_name in v.keys():
+            if not name_pattern.match(provider_name):
+                raise ValueError(f"Invalid provider name: {provider_name}. Only letters, numbers, _ and - allowed")
+            # Resolve env vars in provider config values
+            if isinstance(v[provider_name], dict):
+                v[provider_name] = _resolve_env_vars(v[provider_name])
+        return v
 
     @field_validator('budget_constraints')
     @classmethod
@@ -129,6 +183,7 @@ class ResolvedFeatureConfig(BaseModel):
     # Provider and model configuration (resolved)
     model: Optional[str] = Field(None, description="Resolved provider:model")
     provider_api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for LLM providers")
+    providers: Dict[str, ProviderConfig] = Field(default_factory=dict, description="Custom provider configurations")
 
     # Budget and rate limiting
     budget_constraints: Dict[str, Constraint] = Field(default_factory=dict, description="Multi-dimensional budget constraints by name")
@@ -276,6 +331,13 @@ class ConfigResolver:
                         resolved_constraints = resolved.get('budget_constraints', {})
                         resolved_constraints.update(value)
                         resolved['budget_constraints'] = resolved_constraints
+                    # If value is empty dict, keep the defaults (don't override)
+                elif key == "providers":
+                    # Merge providers dicts, feature providers override defaults by name
+                    if value:  # Only merge if feature has non-empty providers
+                        resolved_providers = resolved.get('providers', {})
+                        resolved_providers.update(value)
+                        resolved['providers'] = resolved_providers
                     # If value is empty dict, keep the defaults (don't override)
                 # if key == 'guardrails' and value:
                 #     # Merge guardrail configs (feature overrides specific fields)

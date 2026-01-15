@@ -5,6 +5,7 @@ This module provides the foundation for a composable middleware pipeline
 that can handle both streaming and non-streaming LLM requests.
 """
 
+from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, cast
 import logging
 
@@ -135,6 +136,67 @@ def _extract_provider_from_model(model_id: str) -> str:
     return "unknown"
 
 
+@dataclass
+class ResolvedProvider:
+    """Resolved provider information for LLM calls."""
+    underlying_provider: str    # The actual any_llm provider (e.g., "openai")
+    model_suffix: str           # The model part after the colon (e.g., "gpt-4")
+    full_model_id: str          # The full model_id to pass to any_llm (e.g., "openai:gpt-4")
+    extra_options: Dict[str, Any]  # Additional options for acompletion (api_base, etc.)
+    api_key_lookup: str         # Provider name to use for API key lookup
+
+
+def _resolve_provider(model_id: str, providers: Dict[str, Any]) -> ResolvedProvider:
+    """
+    Resolve provider information from model_id and provider configs.
+
+    Handles both standard providers (openai:gpt-4) and custom providers (my-custom-openai:gpt-4).
+
+    Args:
+        model_id: The model identifier (e.g., "my-custom-openai:gpt-4" or "openai:gpt-4")
+        providers: Dict of custom provider configurations
+
+    Returns:
+        ResolvedProvider with all necessary information for the LLM call
+    """
+    if ':' not in model_id:
+        # No provider prefix, treat as unknown
+        return ResolvedProvider(
+            underlying_provider="unknown",
+            model_suffix=model_id,
+            full_model_id=model_id,
+            extra_options={},
+            api_key_lookup="unknown"
+        )
+
+    provider_name, model_suffix = model_id.split(':', 1)
+
+    # Check if this is a custom provider
+    if provider_name in providers:
+        provider_config = providers[provider_name]
+        underlying_provider = provider_config.get('provider', provider_name)
+
+        # Get extra options (everything except 'provider')
+        extra_options = {k: v for k, v in provider_config.items() if k != 'provider'}
+
+        return ResolvedProvider(
+            underlying_provider=underlying_provider,
+            model_suffix=model_suffix,
+            full_model_id=f"{underlying_provider}:{model_suffix}",  # Map to actual provider
+            extra_options=extra_options,
+            api_key_lookup=provider_name  # Use custom provider name for API key lookup
+        )
+
+    # Standard provider - no custom config
+    return ResolvedProvider(
+        underlying_provider=provider_name,
+        model_suffix=model_suffix,
+        full_model_id=model_id,
+        extra_options={},
+        api_key_lookup=provider_name
+    )
+
+
 def classify_llm_error(exception: Exception, request_id: str, provider: str = "unknown") -> PipelineError:
     """
     Classify an exception from any_llm into appropriate pipeline error.
@@ -241,27 +303,44 @@ def _create_error_chunk(error: PipelineError, ctx: RequestContext) -> dict:
         "error": error.to_dict()["error"]  # Include error details
     }
 
-def _resolve_meta_kws(ctx: RequestContext) -> Dict[str, Any]:
-    args = {}
+def _resolve_meta_kws(ctx: RequestContext) -> tuple[Dict[str, Any], ResolvedProvider]:
+    """
+    Resolve metadata keywords for LLM call including provider options.
 
-    model_id_parts = ctx.request.model_id.split(":")
-    if len(model_id_parts) == 2:
-        provider = model_id_parts[0]
-        provider_key = ctx.provider_keys.get(provider, None)
-        if provider_key is not None:
-            args["api_key"] = provider_key
+    Returns:
+        Tuple of (args dict for acompletion, resolved provider info)
+    """
+    args: Dict[str, Any] = {}
 
-    return args
+    # Get providers config from context state (set by config middleware)
+    providers = ctx.state.get('providers', {})
+
+    # Resolve provider information
+    resolved = _resolve_provider(ctx.request.model_id, providers)
+
+    # Look up API key using the appropriate provider name
+    provider_key = ctx.provider_keys.get(resolved.api_key_lookup)
+    if provider_key is not None:
+        args["api_key"] = provider_key
+
+    # Add any extra provider options (api_base, etc.)
+    args.update(resolved.extra_options)
+
+    return args, resolved
 
 async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[ChatCompletionChunk, None]:
     await ctx.pipeline.llm_call.execute_pre(ctx)
+
+    # Resolve provider information (including custom provider config)
+    meta_kws, resolved = _resolve_meta_kws(ctx)
+
     try:
         # Call any_llm.acompletion with streaming enabled
         completion_stream = await any_llm.acompletion(
-            model=ctx.request.model_id,
+            model=resolved.full_model_id,  # Use resolved model_id (maps custom provider to underlying)
             messages=ctx.request.messages, # type: ignore
             stream=True,
-            **_resolve_meta_kws(ctx),
+            **meta_kws,
             **{k: v for k, v in ctx.request.model_dump().items()
             if k not in ['model_id', 'messages', 'metadata', 'stream', 'prompt_id', 'prompt_variables']}
         )
@@ -275,11 +354,10 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
 
     except Exception as e:
         # Classify and set pipeline error in context for streaming
-        provider = _extract_provider_from_model(ctx.request.model_id)
-        pipeline_error = classify_llm_error(e, ctx.request_id, provider)
+        pipeline_error = classify_llm_error(e, ctx.request_id, resolved.underlying_provider)
         logger.error(
-            "LLM call error in streaming request %s: %s", 
-            ctx.request_id, 
+            "LLM call error in streaming request %s: %s",
+            ctx.request_id,
             str(pipeline_error),
             exc_info=e
         )
@@ -292,11 +370,15 @@ async def _execute_llm_call_streaming(ctx: RequestContext) -> AsyncGenerator[Cha
 
 async def _execute_llm_call(ctx: RequestContext):
     await ctx.pipeline.llm_call.execute_pre(ctx)
+
+    # Resolve provider information (including custom provider config)
+    meta_kws, resolved = _resolve_meta_kws(ctx)
+
     try:
         completion = await any_llm.acompletion(
-            model=ctx.request.model_id,
+            model=resolved.full_model_id,  # Use resolved model_id (maps custom provider to underlying)
             messages=ctx.request.messages, # type: ignore
-            **_resolve_meta_kws(ctx),
+            **meta_kws,
             **{k: v for k, v in ctx.request.model_dump().items()
             if k not in ['model_id', 'messages', 'metadata', 'prompt_id', 'prompt_variables']} # type: ignore
         )
@@ -304,11 +386,10 @@ async def _execute_llm_call(ctx: RequestContext):
         ctx.set_response(completion)
     except Exception as e:
         # Classify and raise pipeline error - this will be caught by signal handler
-        provider = _extract_provider_from_model(ctx.request.model_id)
-        pipeline_error = classify_llm_error(e, ctx.request_id, provider)
+        pipeline_error = classify_llm_error(e, ctx.request_id, resolved.underlying_provider)
         logger.error(
-            "LLM call error in request %s: %s", 
-            ctx.request_id, 
+            "LLM call error in request %s: %s",
+            ctx.request_id,
             str(pipeline_error),
             exc_info=e
         )
