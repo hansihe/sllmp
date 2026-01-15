@@ -8,10 +8,9 @@ including budget limits, rate limits, and proper error responses.
 import pytest
 import httpx
 import asyncio
-from unittest.mock import patch
 
 from sllmp import SimpleProxyServer
-from sllmp.context import Pipeline, RequestContext
+from sllmp.context import Pipeline
 from sllmp.middleware.limit import (
     limit_enforcement_middleware,
     BudgetLimit,
@@ -19,35 +18,9 @@ from sllmp.middleware.limit import (
     Constraint,
     InMemoryLimitBackend,
 )
-from any_llm.types.completion import ChatCompletion
 
 
-@pytest.fixture
-def mock_llm_completion():
-    """Mock any_llm.acompletion for integration tests."""
-
-    def create_completion(**kwargs):
-        model_id = kwargs.get("model", kwargs.get("model_id", "openai:gpt-3.5-turbo"))
-        return ChatCompletion(
-            id="chatcmpl-test",
-            object="chat.completion",
-            created=1234567890,
-            model=model_id,
-            choices=[
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": "Test response"},
-                    "finish_reason": "stop",
-                }
-            ],
-            usage={"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
-        )
-
-    async def mock_completion(stream=False, **kwargs):
-        return create_completion(**kwargs)
-
-    with patch("sllmp.pipeline.any_llm.acompletion", side_effect=mock_completion):
-        yield
+# Note: mock_llm_completion is provided by conftest.py
 
 
 @pytest.fixture

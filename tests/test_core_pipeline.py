@@ -6,113 +6,18 @@ middleware integration, and error handling through the new architecture.
 """
 
 import pytest
-import asyncio
-import json
-from unittest.mock import AsyncMock, patch
-from typing import Dict, Any
+from unittest.mock import patch
 
-from sllmp.context import (
-    Pipeline, RequestContext, PipelineState, NCompletionParams
-)
+from sllmp.context import Pipeline, RequestContext, PipelineState
 from sllmp.pipeline import create_request_context, execute_pipeline
-from sllmp.error import ValidationError, PipelineError
-from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
+from sllmp.error import ValidationError
+from any_llm.types.completion import ChatCompletion
+
+from helpers import create_stream_chunks
 
 
-@pytest.fixture
-def basic_completion_params():
-    """Basic completion parameters for testing."""
-    return NCompletionParams(
-        model_id="openai:gpt-3.5-turbo",
-        messages=[{"role": "user", "content": "Hello"}],
-        metadata={}
-    )
-
-
-@pytest.fixture
-def streaming_completion_params():
-    """Streaming completion parameters for testing."""
-    return NCompletionParams(
-        model_id="openai:gpt-4",
-        messages=[{"role": "user", "content": "Tell me a story"}],
-        stream=True,
-        metadata={}
-    )
-
-
-@pytest.fixture
-def mock_llm_response():
-    """Mock successful LLM response."""
-    return ChatCompletion(
-        id="chatcmpl-test123",
-        object="chat.completion",
-        created=1234567890,
-        model="openai:gpt-3.5-turbo",
-        choices=[{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": "Hello! This is a test response."
-            },
-            "finish_reason": "stop"
-        }],
-        usage={
-            "prompt_tokens": 10,
-            "completion_tokens": 20,
-            "total_tokens": 30
-        }
-    )
-
-
-@pytest.fixture
-def mock_stream_chunks():
-    """Mock streaming response chunks."""
-    return [
-        ChatCompletionChunk(
-            id="chatcmpl-test123",
-            object="chat.completion.chunk",
-            created=1234567890,
-            model="openai:gpt-4",
-            choices=[{
-                "index": 0,
-                "delta": {"role": "assistant", "content": ""},
-                "finish_reason": None
-            }]
-        ),
-        ChatCompletionChunk(
-            id="chatcmpl-test123",
-            object="chat.completion.chunk",
-            created=1234567890,
-            model="openai:gpt-4",
-            choices=[{
-                "index": 0,
-                "delta": {"content": "Once"},
-                "finish_reason": None
-            }]
-        ),
-        ChatCompletionChunk(
-            id="chatcmpl-test123",
-            object="chat.completion.chunk",
-            created=1234567890,
-            model="openai:gpt-4",
-            choices=[{
-                "index": 0,
-                "delta": {"content": " upon"},
-                "finish_reason": None
-            }]
-        ),
-        ChatCompletionChunk(
-            id="chatcmpl-test123",
-            object="chat.completion.chunk",
-            created=1234567890,
-            model="openai:gpt-4",
-            choices=[{
-                "index": 0,
-                "delta": {},
-                "finish_reason": "stop"
-            }]
-        )
-    ]
+# Note: basic_completion_params, streaming_completion_params, mock_llm_response,
+# and mock_stream_chunks fixtures are provided by conftest.py
 
 
 class TestCorePipelineExecution:
