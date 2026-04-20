@@ -171,6 +171,9 @@ async def chat_completions_handler(request: Request, add_middleware):
                         chunk_dict = json.loads(json.dumps(item, default=str))
 
                     yield f"data: {json.dumps(chunk_dict)}\n\n"
+                if ctx.response_metadata:
+                    metadata_event = {"sllmp_metadata": ctx.response_metadata}
+                    yield f"data: {json.dumps(metadata_event)}\n\n"
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(
@@ -233,7 +236,10 @@ async def chat_completions_handler(request: Request, add_middleware):
                     span.set_attribute(
                         "response.finish_reason", ctx.response.choices[0].finish_reason
                     )
-                return JSONResponse(ctx.response.model_dump())
+                response_data = ctx.response.model_dump()
+                if ctx.response_metadata:
+                    response_data["sllmp_metadata"] = ctx.response_metadata
+                return JSONResponse(response_data)
 
     except Exception as e:
         # Handle unexpected errors

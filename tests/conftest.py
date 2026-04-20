@@ -151,6 +151,29 @@ async def client(mock_llm_completion):
         yield test_client
 
 
+@pytest.fixture
+async def client_with_metadata(mock_llm_completion):
+    """
+    HTTP client whose pipeline writes response_metadata.
+
+    Useful for testing that sllmp_metadata is included in API responses.
+    """
+
+    def add_middleware(ctx):
+        def write_metadata(ctx):
+            ctx.response_metadata["prompt_version"] = 5
+
+        ctx.pipeline.pre.connect(write_metadata)
+
+    server = SimpleProxyServer(pipeline_factory=add_middleware)
+    app = server.create_asgi_app(debug=True)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as test_client:
+        yield test_client
+
+
 async def create_test_client(
     pipeline_factory=None,
     mock_completion=True,

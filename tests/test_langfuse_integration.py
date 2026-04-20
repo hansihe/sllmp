@@ -366,6 +366,48 @@ class TestPromptManagement:
             "test-prompt", label="production"
         )
 
+    def test_prompt_version_written_to_response_metadata(
+        self, mock_langfuse_module, request_context
+    ):
+        """Test that prompt version is written to response_metadata."""
+        from sllmp.middleware.service.langfuse import (
+            langfuse_middleware,
+            _prompt_management_pre_llm,
+        )
+
+        request_context.request.__pydantic_extra__ = {
+            "prompt_id": "test-prompt",
+            "prompt_variables": {},
+        }
+
+        mock_langfuse_module["prompt_client"].version = 3
+        mock_langfuse_module["prompt_client"].compile.return_value = "Compiled text"
+
+        middleware_setup = langfuse_middleware(
+            public_key="pk-test", secret_key="sk-test"
+        )
+        middleware_setup(request_context)
+        _prompt_management_pre_llm(request_context)
+
+        assert request_context.response_metadata["prompt_version"] == 3
+
+    def test_no_response_metadata_without_prompt_id(
+        self, mock_langfuse_module, request_context
+    ):
+        """Test that response_metadata stays empty when no prompt_id is used."""
+        from sllmp.middleware.service.langfuse import (
+            langfuse_middleware,
+            _prompt_management_pre_llm,
+        )
+
+        middleware_setup = langfuse_middleware(
+            public_key="pk-test", secret_key="sk-test"
+        )
+        middleware_setup(request_context)
+        _prompt_management_pre_llm(request_context)
+
+        assert request_context.response_metadata == {}
+
 
 class TestObservability:
     """Test Langfuse observability features."""

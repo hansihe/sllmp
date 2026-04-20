@@ -129,6 +129,7 @@ if _has_langfuse:
 
             langfuse_state["used_prompt_client"] = prompt_client
             langfuse_state["used_prompt_variables"] = prompt_variables
+            ctx.response_metadata["prompt_version"] = prompt_client.version
 
     def _observability_setup(ctx: RequestContext, client: Langfuse):
         langfuse_state = ctx.state["langfuse"]

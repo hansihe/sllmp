@@ -198,6 +198,9 @@ class RequestContext:
     metadata: Dict[str, Any] = field(
         default_factory=dict
     )  # Pipeline execution metadata
+    response_metadata: Dict[str, Any] = field(
+        default_factory=dict
+    )  # Client-facing metadata included in API responses
     errors: List[Exception] = field(default_factory=list)  # Accumulated errors
 
     # Stream characteristics (auto-detected)

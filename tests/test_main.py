@@ -192,6 +192,50 @@ class TestChatCompletions:
         assert "multimodal" in content.lower() or "image" in content.lower()
 
 
+class TestResponseMetadata:
+    """Tests for sllmp_metadata in responses."""
+
+    async def test_non_streaming_includes_sllmp_metadata(
+        self, client_with_metadata, basic_request
+    ):
+        response = await client_with_metadata.post(
+            "/v1/chat/completions", json=basic_request
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "sllmp_metadata" in data
+        assert data["sllmp_metadata"]["prompt_version"] == 5
+
+    async def test_streaming_includes_sllmp_metadata(
+        self, client_with_metadata, basic_request
+    ):
+        basic_request["stream"] = True
+        response = await client_with_metadata.post(
+            "/v1/chat/completions", json=basic_request
+        )
+        assert response.status_code == 200
+
+        content = response.text
+        lines = [
+            line for line in content.strip().split("\n") if line.startswith("data: ")
+        ]
+
+        # The second-to-last data line (before [DONE]) should be the metadata event
+        done_idx = next(i for i, line in enumerate(lines) if line == "data: [DONE]")
+        metadata_line = lines[done_idx - 1]
+        metadata = json.loads(metadata_line[6:])  # strip "data: "
+        assert "sllmp_metadata" in metadata
+        assert metadata["sllmp_metadata"]["prompt_version"] == 5
+
+    async def test_no_sllmp_metadata_when_empty(
+        self, client, basic_request, mock_llm_completion
+    ):
+        response = await client.post("/v1/chat/completions", json=basic_request)
+        assert response.status_code == 200
+        data = response.json()
+        assert "sllmp_metadata" not in data
+
+
 class TestErrorHandling:
     async def test_invalid_json(self, client):
         response = await client.post(
