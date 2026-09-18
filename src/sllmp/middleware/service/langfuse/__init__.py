@@ -147,6 +147,13 @@ if _has_langfuse:
 
         langfuse_state["root_span"] = root_span
 
+        # Hand the trace back to the caller. Without this the id never leaves
+        # the proxy, so a caller that stores the completion has no way to open
+        # the trace that produced it. Named in full because `trace_id` alone
+        # collides with the caller's own tracing (Datadog, OTel) once it lands
+        # in their logs.
+        ctx.response_metadata["langfuse_trace_id"] = root_span.trace_id
+
         generation = None
 
         def observability_pre_llm(ctx: RequestContext):

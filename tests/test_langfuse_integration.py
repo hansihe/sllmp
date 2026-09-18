@@ -48,6 +48,7 @@ def mock_langfuse_module():
         # Mock span and generation objects
         mock_span = MagicMock()
         mock_generation = MagicMock()
+        mock_span.trace_id = "0af7651916cd43dd8448eb211c80319c"
         mock_client.start_observation.return_value = mock_span
         mock_span.start_observation.return_value = mock_generation
 
@@ -391,10 +392,10 @@ class TestPromptManagement:
 
         assert request_context.response_metadata["prompt_version"] == 3
 
-    def test_no_response_metadata_without_prompt_id(
+    def test_no_prompt_version_without_prompt_id(
         self, mock_langfuse_module, request_context
     ):
-        """Test that response_metadata stays empty when no prompt_id is used."""
+        """Test that no prompt_version is reported when no prompt_id is used."""
         from sllmp.middleware.service.langfuse import (
             langfuse_middleware,
             _prompt_management_pre_llm,
@@ -406,7 +407,9 @@ class TestPromptManagement:
         middleware_setup(request_context)
         _prompt_management_pre_llm(request_context)
 
-        assert request_context.response_metadata == {}
+        # The trace id is always reported; the prompt version only when a
+        # prompt was used.
+        assert "prompt_version" not in request_context.response_metadata
 
 
 class TestObservability:
@@ -432,6 +435,12 @@ class TestObservability:
         assert (
             request_context.state["langfuse"]["root_span"]
             == mock_langfuse_module["span"]
+        )
+
+        # Verify the trace id is returned to the caller
+        assert (
+            request_context.response_metadata["langfuse_trace_id"]
+            == "0af7651916cd43dd8448eb211c80319c"
         )
 
     def test_generation_tracking(
