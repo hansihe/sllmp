@@ -2,6 +2,12 @@
 
 All notable changes to SLLMP will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- **Langfuse trace id in proxied responses**: `sllmp_metadata.langfuse_trace_id` now carries the root span's trace id, so a caller that stores a completion can open the trace that produced it
+
 ## 0.2.0 - 2026-01-16
 
 ### Added
