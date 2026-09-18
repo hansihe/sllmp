@@ -138,7 +138,7 @@ if _has_langfuse:
         token = ctx_api.attach(
             set_span_in_context(trace.INVALID_SPAN, ctx_api.Context())
         )
-        root_span = client.start_span(
+        root_span = client.start_observation(
             name="chat-completion",
             input=extract_chat_prompt(ctx.request),
             metadata=ctx.client_metadata,

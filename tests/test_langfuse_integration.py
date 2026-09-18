@@ -48,7 +48,7 @@ def mock_langfuse_module():
         # Mock span and generation objects
         mock_span = MagicMock()
         mock_generation = MagicMock()
-        mock_client.start_span.return_value = mock_span
+        mock_client.start_observation.return_value = mock_span
         mock_span.start_observation.return_value = mock_generation
 
         # Mock prompt client
@@ -422,7 +422,7 @@ class TestObservability:
         middleware_setup(request_context)
 
         # Verify root span was created
-        call_args = mock_langfuse_module["client"].start_span.call_args
+        call_args = mock_langfuse_module["client"].start_observation.call_args
         assert call_args.kwargs["name"] == "chat-completion"
         assert call_args.kwargs["metadata"] == request_context.client_metadata
         assert "input" in call_args.kwargs  # Verify input is passed
